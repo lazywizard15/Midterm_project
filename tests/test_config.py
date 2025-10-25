@@ -62,7 +62,7 @@ def test_config_loader_success(temp_env_setup):
     assert history_dir_path.is_dir()
 
     # --- 3. Test Get Settings ---
-    assert config.get_setting('CALCULATOR_MAX_HISTORY_SIZE') == "5"
+    assert config.get_setting('CALCULATOR_MAX_HISTORY_SIZE') == "10"
     assert config.get_setting('CALCULATOR_AUTO_SAVE') == "false"
     assert config.get_setting('CALCULATOR_PRECISION') == "4"
     assert config.get_setting('CALCULATOR_MAX_INPUT_VALUE') == "1000"
