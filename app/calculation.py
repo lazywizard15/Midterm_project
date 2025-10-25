@@ -97,8 +97,9 @@ class Calculation:
                 operation=data['operation'],
                 operand1=Decimal(data['operand1']),
                 operand2=Decimal(data['operand2']),
-                result=Decimal(data['result'])
+                
             )
+            calc.result=Decimal(data['result'])
             calc.timestamp = datetime.datetime.fromisoformat(data['timestamp'])
             return calc
         except (KeyError, InvalidOperation, ValueError) as e:
