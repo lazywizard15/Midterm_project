@@ -1,155 +1,155 @@
-########################
-# Advanced Calculator REPL
-########################
-
-from decimal import Decimal
-import logging
-import colorama
-
+"""
+REPL (Read-Eval-Print Loop) interface for the calculator.
+"""
 from app.calculator import Calculator
-from app.exceptions import OperationError, ValidationError
 from app.operations import OperationFactory
 from app.history import LoggingObserver, AutoSaveObserver
+from app.exceptions import ValidationError, OperationError
 
-colorama.init(autoreset=True)
 
 def calculator_repl():
-    """
-    Command-line interface for the advanced calculator.
+    """Run the calculator REPL."""
+    calculator = Calculator()
+    
+    # Add observers
+    calculator.add_observer(LoggingObserver())
+    calculator.add_observer(AutoSaveObserver(calculator))
+    
+    print("Welcome to Advanced Calculator. Type 'help' for commands.")
+    
+    # Try to load history
+    try:
+        calculator.load_history()
+    except Exception as e:
+        print(f"Warning: Could not load history: {str(e)}")
+    
+    while True:
+        try:
+            user_input = input("\n> ").strip().lower()
+            
+            if not user_input:
+                continue
+            
+            # Handle commands
+            if user_input == 'exit' or user_input == 'quit':
+                try:
+                    calculator.save_history()
+                    print("History saved successfully.")
+                except Exception as e:
+                    print(f"Warning: Could not save history: {str(e)}")
+                print("Goodbye!")
+                break
+            
+            elif user_input == 'help':
+                print_help()
+            
+            elif user_input == 'history':
+                show_history(calculator)
+            
+            elif user_input == 'clear':
+                calculator.clear_history()
+                print("History cleared.")
+            
+            elif user_input == 'undo':
+                if calculator.undo():
+                    print("Undo successful.")
+                else:
+                    print("Nothing to undo.")
+            
+            elif user_input == 'redo':
+                if calculator.redo():
+                    print("Redo successful.")
+                else:
+                    print("Nothing to redo.")
+            
+            elif user_input == 'operations':
+                print("\nAvailable operations:")
+                ops = OperationFactory.get_available_operations()
+                unique_ops = sorted(set(ops))
+                for op in unique_ops:
+                    print(f"  - {op}")
+            
+            else:
+                # Try to parse as operation
+                parts = user_input.split()
+                
+                if len(parts) == 3:
+                    operation_name, operand1, operand2 = parts
+                    process_calculation(calculator, operation_name, operand1, operand2)
+                elif len(parts) == 1:
+                    # Single operation name, prompt for operands
+                    operation_name = parts[0]
+                    try:
+                        OperationFactory.create_operation(operation_name)
+                        operand1 = input("Enter first operand: ").strip()
+                        operand2 = input("Enter second operand: ").strip()
+                        process_calculation(calculator, operation_name, operand1, operand2)
+                    except ValidationError:
+                        print("Usage: operation operand1 operand2")
+                        print("Example: add 5 3")
+                        print("Type 'help' for more commands.")
+                else:
+                    print("Usage: operation operand1 operand2")
+                    print("Example: add 5 3")
+                    print("Type 'help' for more commands.")
+        
+        except KeyboardInterrupt:
+            print("\n\nInterrupted. Type 'exit' to quit.")
+        except EOFError:
+            print("\nGoodbye!")
+            break
+        except Exception as e:
+            print(f"Error: {str(e)}")
 
-    Implements a REPL that continuously prompts the user for commands,
-    processes arithmetic operations, and manages calculation history.
+
+def print_help():
+    """Print help information."""
+    print("\nAvailable commands:")
+    print("  <operation> <num1> <num2> - Perform calculation")
+    print("  help - Show this help message")
+    print("  operations - List available operations")
+    print("  history - Show calculation history")
+    print("  clear - Clear calculation history")
+    print("  undo - Undo the last calculation")
+    print("  redo - Redo the last undone calculation")
+    print("  exit/quit - Exit the calculator")
+    print("\nExample: add 5 3")
+
+
+def show_history(calculator: Calculator):
+    """Display calculation history."""
+    history = calculator.get_history()
+    if not history:
+        print("No calculations in history.")
+        return
+    
+    print("\nCalculation History:")
+    for i, calc in enumerate(history, 1):
+        print(f"  {i}. {calc.operand1} {calc.operation} {calc.operand2} = {calc.result}")
+
+
+def process_calculation(calculator: Calculator, operation_name: str, operand1: str, operand2: str):
+    """
+    Process a calculation.
+    
+    Args:
+        calculator (Calculator): The calculator instance.
+        operation_name (str): Name of the operation.
+        operand1 (str): First operand.
+        operand2 (str): Second operand.
     """
     try:
-        # Initialize the Calculator instance
-        calc = Calculator()
-
-        # Register observers for logging and auto-saving history
-        calc.add_observer(LoggingObserver())
-        calc.add_observer(AutoSaveObserver(calc))
-
-        print(colorama.Fore.CYAN + "Welcome to Advanced Calculator. Type 'help' for commands.")
-
-        while True:
-            try:
-                command = input(colorama.Fore.YELLOW + ">> ").lower().strip()
-
-                # Exit command
-                if command in ['exit', 'quit']:
-                    try:
-                        calc.save_history()
-                        print(colorama.Fore.GREEN + "History saved successfully.")
-                    except Exception as e:
-                        print(colorama.Fore.RED + f"Warning: Could not save history: {e}")
-                    print(colorama.Fore.CYAN + "Goodbye!")
-                    break
-
-                # Help menu
-                elif command == 'help':
-                    print(colorama.Fore.CYAN + "\nAvailable commands:")
-                    print("  add, subtract, multiply, divide, power, root, modulus, int_divide, percent, abs_diff - Perform calculations")
-                    print("  history - Show calculation history")
-                    print("  clear - Clear calculation history")
-                    print("  undo - Undo the last calculation")
-                    print("  redo - Redo the last undone calculation")
-                    print("  save - Save calculation history to file")
-                    print("  load - Load calculation history from file")
-                    print("  exit - Exit the calculator")
-                    continue
-
-                # Show history
-                elif command == 'history':
-                    history = calc.show_history()
-                    if not history:
-                        print(colorama.Fore.MAGENTA + "No calculations in history.")
-                    else:
-                        print(colorama.Fore.CYAN + "\nCalculation History:")
-                        for i, entry in enumerate(history, 1):
-                            print(f"{i}. {entry}")
-                    continue
-
-                # Clear history
-                elif command == 'clear':
-                    calc.clear_history()
-                    print(colorama.Fore.GREEN + "History cleared.")
-                    continue
-
-                # Undo
-                elif command == 'undo':
-                    if calc.undo():
-                        print(colorama.Fore.GREEN + "Operation undone.")
-                    else:
-                        print(colorama.Fore.YELLOW + "Nothing to undo.")
-                    continue
-
-                # Redo
-                elif command == 'redo':
-                    if calc.redo():
-                        print(colorama.Fore.GREEN + "Operation redone.")
-                    else:
-                        print(colorama.Fore.YELLOW + "Nothing to redo.")
-                    continue
-
-                # Save history
-                elif command == 'save':
-                    try:
-                        calc.save_history()
-                        print(colorama.Fore.GREEN + "History saved successfully.")
-                    except Exception as e:
-                        print(colorama.Fore.RED + f"Error saving history: {e}")
-                    continue
-
-                # Load history
-                elif command == 'load':
-                    try:
-                        calc.load_history()
-                        print(colorama.Fore.GREEN + "History loaded successfully.")
-                    except Exception as e:
-                        print(colorama.Fore.RED + f"Error loading history: {e}")
-                    continue
-
-                # Perform operations
-                elif command.split()[0] in ['add', 'subtract', 'multiply', 'divide', 'power', 'root', 'modulus', 'int_divide', 'percent', 'abs_diff']:
-                    parts = command.split()
-                    if len(parts) != 3:
-                        print(colorama.Fore.YELLOW + "Usage: operation operand1 operand2")
-                        continue
-                    op_name, a_str, b_str = parts
-                    try:
-                        a = float(a_str)
-                        b = float(b_str)
-                    except ValueError:
-                        print(colorama.Fore.RED + "Operands must be numbers.")
-                        continue
-
-                    try:
-                        result = calc.perform_operation(op_name, a, b)
-                        if isinstance(result, Decimal):
-                            result = result.normalize()
-                        print(colorama.Fore.MAGENTA + f"Result: {result}")
-                    except (ValidationError, OperationError) as e:
-                        print(colorama.Fore.RED + f"Error: {e}")
-                    except Exception as e:
-                        print(colorama.Fore.RED + f"Unexpected error: {e}")
-                    continue
-
-                else:
-                    print(colorama.Fore.YELLOW + f"Unknown command: '{command}'. Type 'help' for commands.")
-
-            except KeyboardInterrupt:
-                print(colorama.Fore.YELLOW + "\nOperation cancelled (Ctrl+C)")
-                continue
-            except EOFError:
-                print(colorama.Fore.CYAN + "\nInput terminated. Exiting...")
-                break
-            except Exception as e:
-                print(colorama.Fore.RED + f"Error: {e}")
-                continue
-
+        operation = OperationFactory.create_operation(operation_name)
+        calculator.set_operation(operation)
+        result = calculator.perform_operation(operand1, operand2)
+        print(f"\nResult: {result}")
+    except ValidationError as e:
+        print(f"Validation Error: {str(e)}")
+    except OperationError as e:
+        print(f"Operation Error: {str(e)}")
     except Exception as e:
-        print(colorama.Fore.RED + f"Fatal error: {e}")
-        logging.error(f"Fatal error in calculator REPL: {e}")
-        raise
+        print(f"Error: {str(e)}")
+
 
 if __name__ == "__main__":
     calculator_repl()

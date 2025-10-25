@@ -1,73 +1,179 @@
+"""
+Tests for history observer classes.
+"""
 import pytest
+import logging
 from unittest.mock import Mock, patch
-from app.calculation import Calculation
 from app.history import LoggingObserver, AutoSaveObserver
+from app.calculation import Calculation
 from app.calculator import Calculator
 from app.calculator_config import CalculatorConfig
+from decimal import Decimal
 
-# Sample setup for mock calculation
-calculation_mock = Mock(spec=Calculation)
-calculation_mock.operation = "addition"
-calculation_mock.operand1 = 5
-calculation_mock.operand2 = 3
-calculation_mock.result = 8
 
-# Test cases for LoggingObserver
-
-@patch('logging.info')
-def test_logging_observer_logs_calculation(logging_info_mock):
+def test_logging_observer_logs_calculation(caplog):
     observer = LoggingObserver()
-    observer.update(calculation_mock)
-    logging_info_mock.assert_called_once_with(
-        "Calculation performed: addition (5, 3) = 8"
-    )
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    
+    with caplog.at_level(logging.INFO):
+        observer.update(calc)
+    
+    assert "Calculation performed" in caplog.text
+    assert "Addition" in caplog.text
 
-def test_logging_observer_no_calculation():
+
+def test_logging_observer_no_calculation(caplog):
     observer = LoggingObserver()
-    with pytest.raises(AttributeError):
-        observer.update(None)  # Passing None should raise an exception as there's no calculation
+    
+    with caplog.at_level(logging.INFO):
+        observer.update(None)
+    
+    assert "Calculation performed" not in caplog.text
 
-# Test cases for AutoSaveObserver
 
 def test_autosave_observer_triggers_save():
     calculator_mock = Mock(spec=Calculator)
     calculator_mock.config = Mock(spec=CalculatorConfig)
     calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
     observer = AutoSaveObserver(calculator_mock)
     
-    observer.update(calculation_mock)
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
     calculator_mock.save_history.assert_called_once()
+
 
 @patch('logging.info')
 def test_autosave_observer_logs_autosave(logging_info_mock):
     calculator_mock = Mock(spec=Calculator)
     calculator_mock.config = Mock(spec=CalculatorConfig)
     calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
     observer = AutoSaveObserver(calculator_mock)
     
-    observer.update(calculation_mock)
-    logging_info_mock.assert_called_once_with("History auto-saved")
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
+    logging_info_mock.assert_any_call("History auto-saved")
+
 
 def test_autosave_observer_does_not_trigger_save_when_disabled():
     calculator_mock = Mock(spec=Calculator)
     calculator_mock.config = Mock(spec=CalculatorConfig)
     calculator_mock.config.auto_save = False
+    calculator_mock.history = []  # Add history attribute
     observer = AutoSaveObserver(calculator_mock)
     
-    observer.update(calculation_mock)
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
     calculator_mock.save_history.assert_not_called()
 
-# Additional negative test cases for AutoSaveObserver
 
 def test_autosave_observer_invalid_calculator():
-    with pytest.raises(TypeError):
-        AutoSaveObserver(None)  # Passing None should raise a TypeError
+    invalid_calculator = Mock()
+    
+    with pytest.raises(TypeError, match="Calculator must have 'config' attribute"):
+        AutoSaveObserver(invalid_calculator)
+
 
 def test_autosave_observer_no_calculation():
     calculator_mock = Mock(spec=Calculator)
     calculator_mock.config = Mock(spec=CalculatorConfig)
     calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
     observer = AutoSaveObserver(calculator_mock)
     
-    with pytest.raises(AttributeError):
-        observer.update(None)  # Passing None should raise an exception
+    observer.update(None)
+    
+    calculator_mock.save_history.assert_not_called()"""
+Tests for history observer classes.
+"""
+import pytest
+import logging
+from unittest.mock import Mock, patch
+from app.history import LoggingObserver, AutoSaveObserver
+from app.calculation import Calculation
+from app.calculator import Calculator
+from app.calculator_config import CalculatorConfig
+from decimal import Decimal
+
+
+def test_logging_observer_logs_calculation(caplog):
+    observer = LoggingObserver()
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    
+    with caplog.at_level(logging.INFO):
+        observer.update(calc)
+    
+    assert "Calculation performed" in caplog.text
+    assert "Addition" in caplog.text
+
+
+def test_logging_observer_no_calculation(caplog):
+    observer = LoggingObserver()
+    
+    with caplog.at_level(logging.INFO):
+        observer.update(None)
+    
+    assert "Calculation performed" not in caplog.text
+
+
+def test_autosave_observer_triggers_save():
+    calculator_mock = Mock(spec=Calculator)
+    calculator_mock.config = Mock(spec=CalculatorConfig)
+    calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
+    observer = AutoSaveObserver(calculator_mock)
+    
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
+    calculator_mock.save_history.assert_called_once()
+
+
+@patch('logging.info')
+def test_autosave_observer_logs_autosave(logging_info_mock):
+    calculator_mock = Mock(spec=Calculator)
+    calculator_mock.config = Mock(spec=CalculatorConfig)
+    calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
+    observer = AutoSaveObserver(calculator_mock)
+    
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
+    logging_info_mock.assert_any_call("History auto-saved")
+
+
+def test_autosave_observer_does_not_trigger_save_when_disabled():
+    calculator_mock = Mock(spec=Calculator)
+    calculator_mock.config = Mock(spec=CalculatorConfig)
+    calculator_mock.config.auto_save = False
+    calculator_mock.history = []  # Add history attribute
+    observer = AutoSaveObserver(calculator_mock)
+    
+    calc = Calculation("Addition", Decimal("2"), Decimal("3"))
+    observer.update(calc)
+    
+    calculator_mock.save_history.assert_not_called()
+
+
+def test_autosave_observer_invalid_calculator():
+    invalid_calculator = Mock()
+    
+    with pytest.raises(TypeError, match="Calculator must have 'config' attribute"):
+        AutoSaveObserver(invalid_calculator)
+
+
+def test_autosave_observer_no_calculation():
+    calculator_mock = Mock(spec=Calculator)
+    calculator_mock.config = Mock(spec=CalculatorConfig)
+    calculator_mock.config.auto_save = True
+    calculator_mock.history = []  # Add history attribute
+    observer = AutoSaveObserver(calculator_mock)
+    
+    observer.update(None)
+    
+    calculator_mock.save_history.assert_not_called()

@@ -1,87 +1,43 @@
-########################
-# Calculation Model
-########################
-
-from dataclasses import dataclass, field
-import datetime
+"""
+This module defines the Calculation class for representing mathematical calculations.
+"""
 from decimal import Decimal, InvalidOperation
+from datetime import datetime
 import logging
-from typing import Any, Dict
+from app.operations import OperationFactory
+from app.exceptions import ValidationError
 
-from app.exceptions import OperationError
 
-
-@dataclass
 class Calculation:
     """
-    Value Object representing a single calculation.
-
-    Encapsulates details of a mathematical calculation, including operation,
-    operands, result, and timestamp. Supports optional and basic operations.
+    Represents a single calculation with operation, operands, result, and timestamp.
     """
 
-    operation: str
-    operand1: Decimal
-    operand2: Decimal
-    result: Decimal = field(init=False)
-    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
-
-    def __post_init__(self):
-        if not hasattr(self, 'result') or self.result is None:
-            self.result = self.calculate()
-
-    def __repr__(self):
-        return f"{self.timestamp} | {self.operation}({self.operand1}, {self.operand2}) = {self.result}"
-
-    def calculate(self) -> Decimal:
+    def __init__(self, operation: str, operand1: Decimal, operand2: Decimal):
         """
-        Execute calculation using the specified operation.
+        Initialize a Calculation instance.
+        
+        Args:
+            operation (str): The operation name.
+            operand1 (Decimal): The first operand.
+            operand2 (Decimal): The second operand.
+        """
+        self.operation = operation
+        self.operand1 = operand1
+        self.operand2 = operand2
+        self.timestamp = datetime.now()
+        
+        # Compute result
+        operation_obj = OperationFactory.create_operation(operation)
+        self.result = operation_obj.execute(operand1, operand2)
 
+    def to_dict(self) -> dict:
+        """
+        Convert the Calculation instance to a dictionary.
+        
         Returns:
-            Decimal: Calculation result.
-
-        Raises:
-            OperationError: If operation is unknown or invalid.
+            dict: Dictionary representation of the calculation.
         """
-        operations = {
-            "Addition": lambda x, y: x + y,
-            "Subtraction": lambda x, y: x - y,
-            "Multiplication": lambda x, y: x * y,
-            "Division": lambda x, y: x / y if y != 0 else self._raise_div_zero(),
-            "Power": lambda x, y: Decimal(pow(float(x), float(y))) if y >= 0 else self._raise_neg_power(),
-            "Root": lambda x, y: Decimal(pow(float(x), 1 / float(y))) if x >= 0 and y != 0 else self._raise_invalid_root(x, y),
-            "Modulus": lambda x, y: x % y if y != 0 else self._raise_div_zero(),
-            "IntegerDivision": lambda x, y: x // y if y != 0 else self._raise_div_zero(),
-            "Percentage": lambda x, y: (x / y) * 100 if y != 0 else self._raise_div_zero(),
-            "AbsoluteDifference": lambda x, y: abs(x - y)
-        }
-
-        op = operations.get(self.operation)
-        if not op:
-            raise OperationError(f"Unknown operation: {self.operation}")
-
-        try:
-            return op(self.operand1, self.operand2)
-        except (InvalidOperation, ValueError, ArithmeticError) as e:
-            raise OperationError(f"Calculation failed: {str(e)}")
-
-    @staticmethod
-    def _raise_div_zero():
-        raise OperationError("Division by zero is not allowed")
-
-    @staticmethod
-    def _raise_neg_power():
-        raise OperationError("Negative exponents are not supported")
-
-    @staticmethod
-    def _raise_invalid_root(x: Decimal, y: Decimal):
-        if y == 0:
-            raise OperationError("Zero root is undefined")
-        if x < 0:
-            raise OperationError("Cannot calculate root of negative number")
-        raise OperationError("Invalid root operation")
-
-    def to_dict(self) -> Dict[str, Any]:
         return {
             'operation': self.operation,
             'operand1': str(self.operand1),
@@ -90,36 +46,81 @@ class Calculation:
             'timestamp': self.timestamp.isoformat()
         }
 
-    @staticmethod
-    def from_dict(data: Dict[str, Any]) -> 'Calculation':
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Calculation':
+        """
+        Create a Calculation instance from a dictionary.
+        
+        Args:
+            data (dict): Dictionary containing calculation data.
+            
+        Returns:
+            Calculation: New Calculation instance.
+            
+        Raises:
+            ValidationError: If required fields are missing or invalid.
+        """
         try:
-            calc = Calculation(
-                operation=data['operation'],
-                operand1=Decimal(data['operand1']),
-                operand2=Decimal(data['operand2']),
-                
-            )
-            calc.result=Decimal(data['result'])
-            calc.timestamp = datetime.datetime.fromisoformat(data['timestamp'])
+            operation = data['operation']
+            operand1 = Decimal(str(data['operand1']))
+            operand2 = Decimal(str(data['operand2']))
+            saved_result = Decimal(str(data['result']))
+            
+            # Create calculation and compute result
+            calc = cls(operation, operand1, operand2)
+            
+            # Check if saved result matches computed result
+            if calc.result != saved_result:
+                logging.warning(
+                    f"Loaded calculation result {saved_result} differs from computed result {calc.result}"
+                )
+            
+            # Use saved result
+            calc.result = saved_result
+            
+            # Set timestamp if provided
+            if 'timestamp' in data:
+                calc.timestamp = datetime.fromisoformat(data['timestamp'])
+            
             return calc
-        except (KeyError, InvalidOperation, ValueError) as e:
-            raise OperationError(f"Invalid calculation data: {str(e)}")
-
-    def __str__(self) -> str:
-        return f"{self.operation}({self.operand1}, {self.operand2}) = {self.result}"
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, Calculation):
-            return NotImplemented
-        return (
-            self.operation == other.operation and
-            self.operand1 == other.operand1 and
-            self.operand2 == other.operand2 and
-            self.result == other.result
-        )
+            
+        except (KeyError, ValueError, InvalidOperation) as e:
+            raise ValidationError(f"Invalid calculation data: {str(e)}")
 
     def format_result(self, precision: int = 10) -> str:
-        try:
-            return str(self.result.quantize(Decimal('0.' + '0' * precision)).normalize())
-        except InvalidOperation:
-            return str(self.result)
+        """
+        Format the result with specified precision.
+        
+        Args:
+            precision (int): Number of decimal places.
+            
+        Returns:
+            str: Formatted result string.
+        """
+        return f"{self.result:.{precision}f}".rstrip('0').rstrip('.')
+
+    def __eq__(self, other) -> bool:
+        """
+        Check equality with another Calculation instance.
+        
+        Args:
+            other: Another Calculation instance.
+            
+        Returns:
+            bool: True if calculations are equal, False otherwise.
+        """
+        if not isinstance(other, Calculation):
+            return False
+        return (self.operation == other.operation and
+                self.operand1 == other.operand1 and
+                self.operand2 == other.operand2 and
+                self.result == other.result)
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the Calculation.
+        
+        Returns:
+            str: String representation.
+        """
+        return f"Calculation({self.operation}, {self.operand1}, {self.operand2}) = {self.result}"
