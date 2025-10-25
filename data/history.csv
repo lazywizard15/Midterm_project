@@ -1,0 +1,3 @@
+Timestamp,OperandA,OperandB,Command,Result
+2025-10-25T07:45:33.623109,1.0,2.0,add,3.0
+2025-10-25T07:45:47.349639,3.0,2.0,subtract,1.0

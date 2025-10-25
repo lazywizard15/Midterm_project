@@ -1,137 +1,54 @@
 """
-Arithmetic operations and factory for calculator.
-Provides addition, subtraction, multiplication, division, power, root, modulus, integer division, percentage, and absolute difference.
+Configures the Python logging module for the application.
 """
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+from app.calculator_config import ConfigLoader
 
-from abc import ABC, abstractmethod
-from app.exceptions import OperationError
+def setup_logging(config: ConfigLoader) -> logging.Logger:
+    """
+    Configures and returns a logger instance.
+    """
+    try:
+        log_file_path = config.get_log_file_path()
+        
+        # Use a name specific to the app module
+        logger = logging.getLogger('app')
+        logger.setLevel(logging.INFO) # Set base level
 
-# Base Operation
-class CalcOperation(ABC):
-    """Abstract base for all arithmetic operations."""
+        # Prevent logs from propagating to the root logger
+        logger.propagate = False
 
-    @abstractmethod
-    def execute(self, x: float, y: float) -> float:
-        """Perform the operation on x and y."""
-        pass
+        # Console Handler (for errors)
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.ERROR)
+        console_format = logging.Formatter('%(levelname)s: %(message)s')
+        console_handler.setFormatter(console_format)
 
-    @abstractmethod
-    def symbol(self) -> str:
-        """Return the symbolic representation of the operation."""
-        pass
+        # File Handler (for all info-level logs and above)
+        file_handler = RotatingFileHandler(
+            log_file_path, 
+            maxBytes=10*1024*1024, # 10 MB
+            backupCount=5
+        )
+        file_handler.setLevel(logging.INFO)
+        file_format = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(file_format)
 
-# Concrete Operations
-class SumOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        return x + y
+        # Add handlers only if they haven't been added before
+        if not logger.handlers:
+            logger.addHandler(console_handler)
+            logger.addHandler(file_handler)
 
-    def symbol(self) -> str:
-        return "+"
-
-class SubtractOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        return x - y
-
-    def symbol(self) -> str:
-        return "-"
-
-class MultiplyOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        return x * y
-
-    def symbol(self) -> str:
-        return "*"
-
-class DivideOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        if y == 0:
-            raise OperationError("Division by zero is not allowed")
-        return x / y
-
-    def symbol(self) -> str:
-        return "/"
-
-class IntDivideOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        if y == 0:
-            raise OperationError("Cannot divide by zero")
-        return x // y
-
-    def symbol(self) -> str:
-        return "//"
-
-class ModulusOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        if y == 0:
-            raise OperationError("Modulo by zero is invalid")
-        return x % y
-
-    def symbol(self) -> str:
-        return "%"
-
-class PowerOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        try:
-            return x ** y
-        except (OverflowError, ValueError) as e:
-            raise OperationError(f"Power operation failed: {e}")
-
-    def symbol(self) -> str:
-        return "^"
-
-class RootOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        if y == 0:
-            raise OperationError("Cannot calculate 0th root")
-        if x < 0 and y % 2 == 0:
-            raise OperationError("Even root of negative number is invalid")
-        return x ** (1 / y)
-
-    def symbol(self) -> str:
-        return "√"
-
-class PercentOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        if y == 0:
-            raise OperationError("Cannot calculate percentage with denominator zero")
-        return (x / y) * 100
-
-    def symbol(self) -> str:
-        return "%of"
-
-class AbsDiffOp(CalcOperation):
-    def execute(self, x: float, y: float) -> float:
-        return abs(x - y)
-
-    def symbol(self) -> str:
-        return "|diff|"
-
-# Factory for creating operations
-class CalcOpFactory:
-    """Factory for generating operation instances based on a name."""
-
-    _operation_map = {
-        "add": SumOp,
-        "subtract": SubtractOp,
-        "multiply": MultiplyOp,
-        "divide": DivideOp,
-        "power": PowerOp,
-        "root": RootOp,
-        "modulus": ModulusOp,
-        "int_divide": IntDivideOp,
-        "percent": PercentOp,
-        "abs_diff": AbsDiffOp,
-    }
-
-    @classmethod
-    def create(cls, op_name: str) -> CalcOperation:
-        """Return an operation instance corresponding to the name."""
-        op_class = cls._operation_map.get(op_name.lower())
-        if op_class is None:
-            raise OperationError(f"Unknown operation requested: {op_name}")
-        return op_class()
-
-    @classmethod
-    def list_operations(cls) -> list:
-        """Return all supported operation names."""
-        return list(cls._operation_map.keys())
+        logger.info(f"Logging configured. Log file at: {log_file_path}")
+        return logger
+        
+    except Exception as e:
+        # Fallback basic logging if setup fails
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger('app')
+        logger.error(f"Failed to configure logging: {e}", exc_info=True)
+        return logger

@@ -1,180 +1,156 @@
-import datetime
-from pathlib import Path
-import pandas as pd
+"""
+Tests for app/calculator.py (including Observer pattern)
+"""
 import pytest
-from unittest.mock import Mock, patch, PropertyMock
-from decimal import Decimal
-from tempfile import TemporaryDirectory
+from unittest.mock import MagicMock, Mock
 from app.calculator import Calculator
-from app.calculator_repl import calculator_repl
-from app.calculator_config import CalculatorConfig
-from app.exceptions import OperationError, ValidationError
-from app.history import LoggingObserver, AutoSaveObserver
-from app.operations import OperationFactory
+from app.operations import CommandFactory, AddCommand
+from app.history import History
+from app.calculation import Calculation
+from app.exceptions import OperationError
 
-# Fixture to initialize Calculator with a temporary directory for file paths
 @pytest.fixture
-def calculator():
-    with TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        config = CalculatorConfig(base_dir=temp_path)
+def mock_factory():
+    """Mocks the CommandFactory."""
+    return MagicMock(spec=CommandFactory)
 
-        # Patch properties to use the temporary directory paths
-        with patch.object(CalculatorConfig, 'log_dir', new_callable=PropertyMock) as mock_log_dir, \
-             patch.object(CalculatorConfig, 'log_file', new_callable=PropertyMock) as mock_log_file, \
-             patch.object(CalculatorConfig, 'history_dir', new_callable=PropertyMock) as mock_history_dir, \
-             patch.object(CalculatorConfig, 'history_file', new_callable=PropertyMock) as mock_history_file:
-            
-            # Set return values to use paths within the temporary directory
-            mock_log_dir.return_value = temp_path / "logs"
-            mock_log_file.return_value = temp_path / "logs/calculator.log"
-            mock_history_dir.return_value = temp_path / "history"
-            mock_history_file.return_value = temp_path / "history/calculator_history.csv"
-            
-            # Return an instance of Calculator with the mocked config
-            yield Calculator(config=config)
+@pytest.fixture
+def mock_history():
+    """Mocks the History."""
+    return MagicMock(spec=History)
 
-# Test Calculator Initialization
+@pytest.fixture
+def calculator(mock_factory, mock_history):
+    """Provides a Calculator instance with mocked dependencies."""
+    return Calculator(mock_factory, mock_history)
 
-def test_calculator_initialization(calculator):
-    assert calculator.history == []
-    assert calculator.undo_stack == []
-    assert calculator.redo_stack == []
-    assert calculator.operation_strategy is None
-
-# Test Logging Setup
-
-@patch('app.calculator.logging.info')
-def test_logging_setup(logging_info_mock):
-    with patch.object(CalculatorConfig, 'log_dir', new_callable=PropertyMock) as mock_log_dir, \
-         patch.object(CalculatorConfig, 'log_file', new_callable=PropertyMock) as mock_log_file:
-        mock_log_dir.return_value = Path('/tmp/logs')
-        mock_log_file.return_value = Path('/tmp/logs/calculator.log')
-        
-        # Instantiate calculator to trigger logging
-        calculator = Calculator(CalculatorConfig())
-        logging_info_mock.assert_any_call("Calculator initialized with configuration")
-
-# Test Adding and Removing Observers
-
-def test_add_observer(calculator):
-    observer = LoggingObserver()
-    calculator.add_observer(observer)
-    assert observer in calculator.observers
-
-def test_remove_observer(calculator):
-    observer = LoggingObserver()
-    calculator.add_observer(observer)
-    calculator.remove_observer(observer)
-    assert observer not in calculator.observers
-
-# Test Setting Operations
-
-def test_set_operation(calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    assert calculator.operation_strategy == operation
-
-# Test Performing Operations
-
-def test_perform_operation_addition(calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    result = calculator.perform_operation(2, 3)
-    assert result == Decimal('5')
-
-def test_perform_operation_validation_error(calculator):
-    calculator.set_operation(OperationFactory.create_operation('add'))
-    with pytest.raises(ValidationError):
-        calculator.perform_operation('invalid', 3)
-
-def test_perform_operation_operation_error(calculator):
-    with pytest.raises(OperationError, match="No operation set"):
-        calculator.perform_operation(2, 3)
-
-# Test Undo/Redo Functionality
-
-def test_undo(calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    calculator.perform_operation(2, 3)
-    calculator.undo()
-    assert calculator.history == []
-
-def test_redo(calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    calculator.perform_operation(2, 3)
-    calculator.undo()
-    calculator.redo()
-    assert len(calculator.history) == 1
-
-# Test History Management
-
-@patch('app.calculator.pd.DataFrame.to_csv')
-def test_save_history(mock_to_csv, calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    calculator.perform_operation(2, 3)
-    calculator.save_history()
-    mock_to_csv.assert_called_once()
-
-@patch('app.calculator.pd.read_csv')
-@patch('app.calculator.Path.exists', return_value=True)
-def test_load_history(mock_exists, mock_read_csv, calculator):
-    # Mock CSV data to match the expected format in from_dict
-    mock_read_csv.return_value = pd.DataFrame({
-        'operation': ['Addition'],
-        'operand1': ['2'],
-        'operand2': ['3'],
-        'result': ['5'],
-        'timestamp': [datetime.datetime.now().isoformat()]
-    })
+def test_execute_command_success(calculator, mock_factory, mock_history):
+    """Tests a successful command execution."""
+    mock_command = MagicMock(spec=AddCommand)
+    mock_command.execute.return_value = 8.0
+    mock_command.name = 'add'
     
-    # Test the load_history functionality
-    try:
-        calculator.load_history()
-        # Verify history length after loading
-        assert len(calculator.history) == 1
-        # Verify the loaded values
-        assert calculator.history[0].operation == "Addition"
-        assert calculator.history[0].operand1 == Decimal("2")
-        assert calculator.history[0].operand2 == Decimal("3")
-        assert calculator.history[0].result == Decimal("5")
-    except OperationError:
-        pytest.fail("Loading history failed due to OperationError")
+    mock_factory.get_command.return_value = mock_command
+    
+    result = calculator.execute_command('add', 5, 3)
+    
+    assert result == 8.0
+    mock_factory.get_command.assert_called_with('add')
+    mock_command.execute.assert_called_with(5, 3)
+    
+    # Verify history was updated
+    mock_history.add_calculation.assert_called_once()
+    # Check the calculation object passed to history
+    calc_arg = mock_history.add_calculation.call_args[0][0]
+    assert isinstance(calc_arg, Calculation)
+    assert calc_arg.operand_a == 5
+    assert calc_arg.result == 8.0
+
+def test_execute_command_failure(calculator, mock_factory, mock_history):
+    """Tests a command execution that fails (e.g., divide by zero)."""
+    error = OperationError("Test Error")
+    mock_factory.get_command.side_effect = error
+    
+    with pytest.raises(OperationError, match="Test Error"):
+        calculator.execute_command('divide', 10, 0)
         
-            
-# Test Clearing History
+    # Ensure history was NOT updated on failure
+    mock_history.add_calculation.assert_not_called()
 
-def test_clear_history(calculator):
-    operation = OperationFactory.create_operation('add')
-    calculator.set_operation(operation)
-    calculator.perform_operation(2, 3)
+def test_history_commands_pass_through(calculator, mock_history):
+    """Tests that history commands are passed to the History manager."""
+    calculator.get_history()
+    mock_history.get_history.assert_called_once()
+    
     calculator.clear_history()
-    assert calculator.history == []
-    assert calculator.undo_stack == []
-    assert calculator.redo_stack == []
+    mock_history.clear_history.assert_called_once()
+    
+    calculator.undo()
+    mock_history.undo.assert_called_once()
+    
+    calculator.redo()
+    mock_history.redo.assert_called_once()
+    
+    calculator.save_history()
+    mock_history.save_history_to_csv.assert_called_once()
+    
+    calculator.load_history()
+    mock_history.load_history_from_csv.assert_called_once_with(calculator._factory)
 
-# Test REPL Commands (using patches for input/output handling)
+def test_get_available_commands(calculator, mock_factory):
+    """Tests pass-through for get_available_commands."""
+    mock_factory.get_available_commands.return_value = ['add', 'subtract']
+    commands = calculator.get_available_commands()
+    assert commands == ['add', 'subtract']
+    mock_factory.get_available_commands.assert_called_once()
 
-@patch('builtins.input', side_effect=['exit'])
-@patch('builtins.print')
-def test_calculator_repl_exit(mock_print, mock_input):
-    with patch('app.calculator.Calculator.save_history') as mock_save_history:
-        calculator_repl()
-        mock_save_history.assert_called_once()
-        mock_print.assert_any_call("History saved successfully.")
-        mock_print.assert_any_call("Goodbye!")
+# --- Observer Pattern Tests ---
 
-@patch('builtins.input', side_effect=['help', 'exit'])
-@patch('builtins.print')
-def test_calculator_repl_help(mock_print, mock_input):
-    calculator_repl()
-    mock_print.assert_any_call("\nAvailable commands:")
+@pytest.fixture
+def mock_observer():
+    """Mocks an Observer."""
+    return MagicMock()
 
-@patch('builtins.input', side_effect=['add', '2', '3', 'exit'])
-@patch('builtins.print')
-def test_calculator_repl_addition(mock_print, mock_input):
-    calculator_repl()
-    mock_print.assert_any_call("\nResult: 5")
+def test_observer_attach_detach(calculator, mock_observer):
+    """Tests attaching and detaching observers."""
+    calculator.attach(mock_observer)
+    assert mock_observer in calculator._observers
+    
+    # Test that attaching twice doesn't add twice
+    calculator.attach(mock_observer)
+    assert len(calculator._observers) == 1
+    
+    calculator.detach(mock_observer)
+    assert mock_observer not in calculator._observers
+
+def test_observer_notify_on_calculation(calculator, mock_factory, mock_observer):
+    """Tests that observers are notified on successful calculation."""
+    mock_command = MagicMock(spec=AddCommand)
+    mock_command.execute.return_value = 8.0
+    mock_command.name = 'add'
+    mock_factory.get_command.return_value = mock_command
+    
+    calculator.attach(mock_observer)
+    calculator.execute_command('add', 5, 3)
+    
+    # Check that observer's update method was called
+    mock_observer.update.assert_called_once()
+    call_args = mock_observer.update.call_args[0]
+    assert call_args[0] == calculator  # subject
+    assert call_args[1] == "calculation_performed" # event
+    assert isinstance(call_args[2], Calculation) # data
+    assert call_args[2].result == 8.0
+
+def test_observer_notify_on_error(calculator, mock_factory, mock_observer):
+    """Tests that observers are notified on calculation error."""
+    error = OperationError("Div by zero")
+    mock_command = MagicMock(spec=AddCommand)
+    mock_command.execute.side_effect = error
+    mock_factory.get_command.return_value = mock_command
+    
+    calculator.attach(mock_observer)
+    
+    with pytest.raises(OperationError):
+        calculator.execute_command('divide', 10, 0)
+        
+    # Check that observer's update method was called with error
+    mock_observer.update.assert_called_once_with(calculator, "error_occurred", error)
+
+def test_observer_notify_on_history_changes(calculator, mock_observer):
+    """Tests that observers are notified on other history events."""
+    calculator.attach(mock_observer)
+    
+    calculator.clear_history()
+    mock_observer.update.assert_called_with(calculator, "history_cleared", None)
+    
+    calculator.undo()
+    mock_observer.update.assert_called_with(calculator, "undo", None)
+    
+    calculator.redo()
+    mock_observer.update.assert_called_with(calculator, "redo", None)
+    
+    calculator.save_history()
+    mock_observer.update.assert_called_with(calculator, "history_saved", None)
+    
+    calculator.load_history()
+    mock_observer.update.assert_called_with(calculator, "history_loaded", None)

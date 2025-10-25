@@ -1,270 +1,159 @@
 """
-This module defines operation classes using the Strategy pattern.
+Defines arithmetic operations using the Factory Pattern.
 """
-from decimal import Decimal, InvalidOperation
+import math
 from abc import ABC, abstractmethod
-from typing import Dict, Type
-from app.exceptions import ValidationError, OperationError
+from app.exceptions import OperationError
 
-
-class Operation(ABC):
-    """Abstract base class for all operations."""
-
+class Command(ABC):
+    """Abstract base class for all commands."""
+    
     @abstractmethod
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Execute the operation on two operands."""
-        pass
-
+    def execute(self, a: float, b: float) -> float:
+        """Executes the command with two operands."""
+        pass # pragma: no cover
+    
+    @property
     @abstractmethod
-    def __str__(self) -> str:
-        """Return the operation name."""
-        pass
+    def name(self) -> str:
+        """Returns the name of the command (e.g., 'add')."""
+        pass # pragma: no cover
+    
+    def __eq__(self, other):
+        """Commands are equal if they are of the same type."""
+        return isinstance(other, self.__class__)
+    # --- END OF ADDITION ---
+# --- Core Operations ---
 
-
-class Addition(Operation):
-    """Addition operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Add two numbers."""
+class AddCommand(Command):
+    """Adds two numbers."""
+    @property
+    def name(self) -> str: return "add"
+    
+    def execute(self, a: float, b: float) -> float:
         return a + b
 
-    def __str__(self) -> str:
-        return "Addition"
-
-
-class Subtraction(Operation):
-    """Subtraction operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Subtract b from a."""
+class SubtractCommand(Command):
+    """Subtracts the second number from the first."""
+    @property
+    def name(self) -> str: return "subtract"
+    
+    def execute(self, a: float, b: float) -> float:
         return a - b
 
-    def __str__(self) -> str:
-        return "Subtraction"
-
-
-class Multiplication(Operation):
-    """Multiplication operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Multiply two numbers."""
+class MultiplyCommand(Command):
+    """Multiplies two numbers."""
+    @property
+    def name(self) -> str: return "multiply"
+    
+    def execute(self, a: float, b: float) -> float:
         return a * b
 
-    def __str__(self) -> str:
-        return "Multiplication"
-
-
-class Division(Operation):
-    """Division operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """
-        Divide a by b.
-        
-        Raises:
-            ValidationError: If b is zero.
-        """
+class DivideCommand(Command):
+    """Divides the first number by the second."""
+    @property
+    def name(self) -> str: return "divide"
+    
+    def execute(self, a: float, b: float) -> float:
         if b == 0:
-            raise ValidationError("Cannot divide by zero")
+            raise OperationError("Cannot divide by zero.")
         return a / b
 
-    def __str__(self) -> str:
-        return "Division"
+# --- New Mandatory Operations ---
 
-
-class Power(Operation):
-    """Power operation (a^b)."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """
-        Compute a raised to the power of b.
-        
-        Args:
-            a (Decimal): Base.
-            b (Decimal): Exponent.
-            
-        Returns:
-            Decimal: Result of a^b.
-            
-        Raises:
-            ValidationError: If the operation is invalid (e.g., negative base with fractional exponent).
-        """
-        # Check for invalid combinations
-        if a < 0 and b % 1 != 0:
-            raise ValidationError("Cannot raise negative number to fractional power")
-        
+class PowerCommand(Command):
+    """Raises the first number to the power of the second."""
+    @property
+    def name(self) -> str: return "power"
+    
+    def execute(self, a: float, b: float) -> float:
         try:
-            # Convert to float for calculation, then back to Decimal
-            result = float(a) ** float(b)
-            return Decimal(str(result))
-        except (ValueError, OverflowError) as e:
-            raise OperationError(f"Power operation failed: {str(e)}")
+            return math.pow(a, b)
+        except ValueError as e:
+            # Handle cases like math.pow(-1, 0.5)
+            raise OperationError(f"Math error during power operation: {e}")
 
-    def __str__(self) -> str:
-        return "Power"
-
-
-class Root(Operation):
-    """Root operation (nth root of a)."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """
-        Compute the bth root of a.
-        
-        Args:
-            a (Decimal): The number to take the root of.
-            b (Decimal): The root degree.
-            
-        Returns:
-            Decimal: Result of the bth root of a.
-            
-        Raises:
-            ValidationError: If b is zero or if taking even root of negative number.
-        """
+class RootCommand(Command):
+    """Calculates the nth root of a number (a = number, b = root)."""
+    @property
+    def name(self) -> str: return "root"
+    
+    def execute(self, a: float, b: float) -> float:
         if b == 0:
-            raise ValidationError("Cannot take zeroth root")
-        
+            raise OperationError("Cannot calculate the 0th root.")
         if a < 0 and b % 2 == 0:
-            raise ValidationError("Cannot calculate root of negative number")
-        
+            raise OperationError("Cannot calculate an even root of a negative number.")
         try:
-            # nth root is equivalent to a^(1/b)
-            result = float(a) ** (1 / float(b))
-            return Decimal(str(result))
-        except (ValueError, OverflowError) as e:
-            raise OperationError(f"Root operation failed: {str(e)}")
+            # b-th root of a is a^(1/b)
+            return math.pow(a, 1/b)
+        except ValueError as e:
+            raise OperationError(f"Math error during root operation: {e}") # pragma: no cover
 
-    def __str__(self) -> str:
-        return "Root"
-
-
-class Modulus(Operation):
-    """Modulus operation (remainder)."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """
-        Compute a modulo b.
-        
-        Raises:
-            ValidationError: If b is zero.
-        """
+class ModulusCommand(Command):
+    """Computes the remainder of a division."""
+    @property
+    def name(self) -> str: return "modulus"
+    
+    def execute(self, a: float, b: float) -> float:
         if b == 0:
-            raise ValidationError("Cannot perform modulo with zero divisor")
+            raise OperationError("Cannot perform modulus by zero.")
         return a % b
 
-    def __str__(self) -> str:
-        return "Modulus"
-
-
-class IntegerDivision(Operation):
-    """Integer division operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """
-        Compute integer division of a by b.
-        
-        Raises:
-            ValidationError: If b is zero.
-        """
+class IntDivideCommand(Command):
+    """Performs integer division."""
+    @property
+    def name(self) -> str: return "int_divide"
+    
+    def execute(self, a: float, b: float) -> float:
         if b == 0:
-            raise ValidationError("Cannot divide by zero")
-        return Decimal(int(a // b))
+            raise OperationError("Cannot perform integer division by zero.")
+        return a // b
 
-    def __str__(self) -> str:
-        return "IntegerDivision"
+class PercentageCommand(Command):
+    """Calculates the percentage of one number with respect to another (a / b) * 100."""
+    @property
+    def name(self) -> str: return "percent"
+    
+    def execute(self, a: float, b: float) -> float:
+        if b == 0:
+            raise OperationError("Cannot calculate percentage with respect to zero.")
+        return (a / b) * 100
 
-
-class Percentage(Operation):
-    """Percentage operation (a% of b)."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Compute a% of b."""
-        return (a / Decimal('100')) * b
-
-    def __str__(self) -> str:
-        return "Percentage"
-
-
-class AbsoluteDifference(Operation):
-    """Absolute difference operation."""
-
-    def execute(self, a: Decimal, b: Decimal) -> Decimal:
-        """Compute the absolute difference between a and b."""
+class AbsDiffCommand(Command):
+    """Calculates the absolute difference between two numbers."""
+    @property
+    def name(self) -> str: return "abs_diff"
+    
+    def execute(self, a: float, b: float) -> float:
         return abs(a - b)
 
-    def __str__(self) -> str:
-        return "AbsoluteDifference"
+# --- Factory ---
 
+class CommandFactory:
+    """
+    Factory for creating command instances.
+    This uses the Factory Design Pattern.
+    """
+    def __init__(self):
+        # Register all available command classes
+        self._commands = {
+            cmd.name: cmd
+            for cmd in [
+                AddCommand(), SubtractCommand(), MultiplyCommand(), DivideCommand(),
+                PowerCommand(), RootCommand(), ModulusCommand(), IntDivideCommand(),
+                PercentageCommand(), AbsDiffCommand()
+            ]
+        }
 
-class OperationFactory:
-    """Factory class for creating operation instances."""
+    def get_command(self, command_name: str) -> Command:
+        """
+        Retrieves a command instance by its name.
+        """
+        command = self._commands.get(command_name)
+        if not command:
+            raise OperationError(f"Unknown command: '{command_name}'")
+        return command
 
-    _operations: Dict[str, Type[Operation]] = {
-        'add': Addition,
-        'addition': Addition,
-        'subtract': Subtraction,
-        'subtraction': Subtraction,
-        'multiply': Multiplication,
-        'multiplication': Multiplication,
-        'divide': Division,
-        'division': Division,
-        'power': Power,
-        'root': Root,
-        'modulus': Modulus,
-        'mod': Modulus,
-        'intdiv': IntegerDivision,
-        'integerdivision': IntegerDivision,
-        'percentage': Percentage,
-        'percent': Percentage,
-        'absdiff': AbsoluteDifference,
-        'absolutedifference': AbsoluteDifference,
-    }
-
-    @classmethod
-    def create_operation(cls, operation_type: str) -> Operation:
-        """
-        Create an operation instance by name.
-        
-        Args:
-            operation_type (str): Name of the operation (case-insensitive).
-            
-        Returns:
-            Operation: Instance of the requested operation.
-            
-        Raises:
-            ValidationError: If operation name is not recognized.
-        """
-        operation_name = operation_type.lower().strip()
-        operation_class = cls._operations.get(operation_name)
-        
-        if not operation_class:
-            raise ValidationError(f"Unknown operation: {operation_type}")
-        
-        return operation_class()
-
-    @classmethod
-    def register_operation(cls, name: str, operation_class: Type[Operation]) -> None:
-        """
-        Register a new operation.
-        
-        Args:
-            name (str): Name to register the operation under.
-            operation_class (Type[Operation]): The operation class.
-            
-        Raises:
-            ValidationError: If operation_class is not a subclass of Operation.
-        """
-        if not issubclass(operation_class, Operation):
-            raise ValidationError("Operation class must inherit from Operation")
-        
-        cls._operations[name.lower()] = operation_class
-
-    @classmethod
-    def get_available_operations(cls) -> list:
-        """
-        Get list of available operation names.
-        
-        Returns:
-            list: List of operation names.
-        """
-        return list(cls._operations.keys())
+    def get_available_commands(self) -> list[str]:
+        """Returns a list of all registered command names."""
+        return list(self._commands.keys())

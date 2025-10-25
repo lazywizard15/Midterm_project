@@ -1,63 +1,62 @@
 """
-Validation routines for calculator inputs.
+Provides validation functions for user input.
 """
+from typing import Optional
+from app.exceptions import InputValidationError
 
-from app.exceptions import ValidationError
-
-
-def ensure_numeric(val, name="value") -> float:
-    """
-    Confirm that the provided value can be interpreted as a number.
+class InputHelper:
+    """Contains static methods for validating and parsing user input."""
     
-    Args:
-        val: Input to check
-        name: Name of the parameter for error messages
-    
-    Returns:
-        Value as float
-    
-    Raises:
-        ValidationError if conversion fails
-    """
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        raise ValidationError(f"Parameter '{name}' must be numeric, received '{val}'")
+    def __init__(self, max_value: float, min_value: float):
+        self.max_value = max_value
+        self.min_value = min_value
 
+    def parse_operand(self, input_str: Optional[str]) -> float:
+        """
+        Tries to convert a string to a float and validates it.
+        """
+        if input_str is None:
+            raise InputValidationError("No input provided. Expected a number.")
+            
+        try:
+            value = float(input_str)
+        except ValueError:
+            raise InputValidationError(f"Invalid input: '{input_str}' is not a valid number.")
+        
+        if not self.min_value <= value <= self.max_value:
+            raise InputValidationError(
+                f"Input value {value} is out of range ({self.min_value} to {self.max_value})."
+            )
+            
+        return value
 
-def ensure_within_limit(val: float, maximum: float, name="value") -> None:
-    """
-    Ensure that the absolute value does not exceed the maximum allowed.
-    
-    Args:
-        val: Value to check
-        maximum: Maximum allowed absolute value
-        name: Name of the parameter for error messages
-    
-    Raises:
-        ValidationError if value is out of range
-    """
-    if abs(val) > maximum:
-        raise ValidationError(f"{name} cannot exceed {maximum}, got {val}")
+    def parse_command_input(self, user_input: str) -> tuple[str, list[float]]:
+        """
+        Parses the full REPL input string into a command and numeric operands.
+        """
+        parts = user_input.strip().split()
+        if not parts:
+            raise InputValidationError("No command entered.")
+            
+        command = parts[0].lower()
+        args_str = parts[1:]
+        
+        # Commands that don't need operands
+        if command in ('history', 'clear', 'undo', 'redo', 'save', 'load', 'help', 'exit'):
+            if args_str:
+                raise InputValidationError(f"Command '{command}' does not take any arguments.")
+            return command, []
+            
+        # Commands that need exactly two operands
+        if command in (
+            'add', 'subtract', 'multiply', 'divide', 'power', 'root', 
+            'modulus', 'int_divide', 'percent', 'abs_diff'
+        ):
+            if len(args_str) != 2:
+                raise InputValidationError(
+                    f"Command '{command}' requires exactly 2 numeric arguments."
+                )
+            operands = [self.parse_operand(arg) for arg in args_str]
+            return command, operands
 
-
-def ensure_nonzero(val: float, name="value") -> None:
-    """
-    Confirm that a number is not zero.
-    
-    Raises:
-        ValidationError if value is zero
-    """
-    if val == 0:
-        raise ValidationError(f"{name} cannot be zero")
-
-
-def ensure_positive(val: float, name="value") -> None:
-    """
-    Confirm that a number is strictly positive.
-    
-    Raises:
-        ValidationError if value is zero or negative
-    """
-    if val <= 0:
-        raise ValidationError(f"{name} must be positive, got {val}")
+        raise InputValidationError(f"Unknown command: '{command}'")

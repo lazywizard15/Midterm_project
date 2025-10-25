@@ -1,62 +1,40 @@
 """
-Represents a single arithmetic operation with operands, result, and timestamp.
+Defines the data structure for a single calculation.
 """
-
+import dataclasses
+from dataclasses import dataclass
 from datetime import datetime
-from app.operations import Operation
+from app.operations import Command
 
+@dataclass
+class Calculation:
+    """
+    A data class (struct) to hold the details of a single calculation.
+    """
+    operand_a: float
+    operand_b: float
+    command: Command
+    result: float
+    timestamp: datetime = dataclasses.field(default_factory=datetime.now)
 
-class CalcRecord:
-    """Holds details for a single calculation event."""
-
-    def __init__(self, op: Operation, first_num: float, second_num: float):
-        """
-        Initialize a calculation record.
-
-        Args:
-            op: Operation instance to perform
-            first_num: First numeric operand
-            second_num: Second numeric operand
-        """
-        self.op_instance = op
-        self.num1 = first_num
-        self.num2 = second_num
-        self.output = None
-        self.time_created = datetime.now()
-
-    def run(self) -> float:
-        """
-        Execute the calculation using the operation.
-
-        Returns:
-            Computed result
-        """
-        self.output = self.op_instance.execute(self.num1, self.num2)
-        return self.output
+    @property
+    def command_name(self) -> str:
+        """Returns the name of the command used."""
+        return self.command.name
 
     def __str__(self) -> str:
-        """Readable string for display purposes."""
-        symbol = self.op_instance.get_symbol()
-        if self.output is not None:
-            return f"{self.num1} {symbol} {self.num2} = {self.output}"
-        return f"{self.num1} {symbol} {self.num2}"
+        """String representation for easy printing."""
+        time_str = self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        return (
+            f"[{time_str}] {self.operand_a} {self.command_name} {self.operand_b} = {self.result}"
+        )
 
-    def __repr__(self) -> str:
-        """Detailed developer-friendly representation."""
-        return (f"CalcRecord({self.op_instance.__class__.__name__}, "
-                f"{self.num1}, {self.num2}, output={self.output})")
-
-    def as_dict(self) -> dict:
-        """
-        Convert calculation to a dictionary for saving or serialization.
-
-        Returns:
-            Dictionary with operation name, operands, result, and timestamp
-        """
+    def to_dict(self) -> dict:
+        """Converts the record to a dictionary for CSV serialization."""
         return {
-            'operation': self.op_instance.__class__.__name__.replace('Operation', '').lower(),
-            'num1': self.num1,
-            'num2': self.num2,
-            'output': self.output,
-            'time_created': self.time_created.isoformat()
+            "Timestamp": self.timestamp.isoformat(),
+            "OperandA": self.operand_a,
+            "OperandB": self.operand_b,
+            "Command": self.command_name,
+            "Result": self.result
         }

@@ -1,27 +1,23 @@
 """
-Custom exception hierarchy for the calculator system.
+Defines custom exceptions for the calculator application.
 """
 
-class CalcBaseError(Exception):
-    """Generic base exception for calculator-related errors."""
+class CalculatorError(Exception):
+    """Base exception class for the calculator."""
     pass
 
-
-class CalcOpError(CalcBaseError):
-    """Raised when an arithmetic operation fails."""
+class OperationError(CalculatorError):
+    """Raised for errors during an arithmetic operation (e.g., division by zero)."""
     pass
 
-
-class CalcValidationError(CalcBaseError):
-    """Raised when input validation fails."""
+class InputValidationError(CalculatorError):
+    """Raised when user input is invalid (e.g., not a number, out of range)."""
     pass
 
-
-class CalcHistoryError(CalcBaseError):
-    """Raised for errors in history operations (undo/redo/save/load)."""
+class ConfigError(CalculatorError):
+    """Raised for errors related to loading or accessing configuration."""
     pass
 
-
-class CalcConfigError(CalcBaseError):
-    """Raised when configuration settings fail to load or are invalid."""
+class HistoryError(CalculatorError):
+    """Raised for errors related to history operations (e.g., save/load failed)."""
     pass
