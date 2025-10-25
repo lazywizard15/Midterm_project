@@ -1,187 +1,252 @@
-########################
-# Calculator Class      #
-########################
+"""
+Main calculator application with REPL interface.
+Uses Observer pattern and Undo/Redo functionality.
+"""
 
-from decimal import Decimal
-import logging
-from pathlib import Path
-from typing import Any, List, Optional, Union
-
+from abc import ABC, abstractmethod
+from typing import List
 from app.calculation import Calculation
+from app.operations import OperationFactory
+from app.history import CalculationHistory
+from app.calculator_memento import UndoRedoManager
 from app.calculator_config import CalculatorConfig
-from app.calculator_memento import CalculatorMemento
-from app.exceptions import OperationError, ValidationError
-from app.history import HistoryObserver, LoggingObserver, AutoSaveObserver
-from app.input_validators import InputValidator
-from app.operations import Operation, OperationFactory
-
-Number = Union[int, float, Decimal]
-CalculationResult = Union[Number, str]
+from app.logger import Logger
+from app.input_validators import validate_number, validate_in_range
+from app.exceptions import OperationError, ValidationError, HistoryError
 
 
-class Calculator:
-    """
-    Main calculator class implementing Strategy, Observer, Memento patterns.
-    Supports undo/redo, logging, autosave, dynamic help menu, and history management.
-    """
+# ---------------- Observer Pattern ---------------- #
 
-    def __init__(self, config: Optional[CalculatorConfig] = None):
-        if config is None:
-            project_root = Path(__file__).parent.parent
-            config = CalculatorConfig(base_dir=project_root)
+class CalculationWatcher(ABC):
+    """Abstract base for any calculation observer."""
 
-        self.config = config
-        self.config.validate()
+    @abstractmethod
+    def notify(self, calc: Calculation) -> None:
+        """Called whenever a new calculation occurs."""
+        pass
 
-        self.history: List[Calculation] = []
-        self.operation_strategy: Optional[Operation] = None
-        self.observers: List[HistoryObserver] = []
 
-        self.undo_stack: List[CalculatorMemento] = []
-        self.redo_stack: List[CalculatorMemento] = []
+class LogWatcher(CalculationWatcher):
+    """Logs each calculation to the logger."""
 
-        self._setup_directories()
-        self._setup_logging()
+    def __init__(self, logger: Logger):
+        self.logger = logger
 
-        # Auto-register Logging and AutoSave observers
-        self.add_observer(LoggingObserver())
-        self.add_observer(AutoSaveObserver(self))
+    def notify(self, calc: Calculation) -> None:
+        operation_name = calc.operation.__class__.__name__.replace("Operation", "").lower()
+        self.logger.log_calculation(operation_name, calc.operand_a, calc.operand_b, calc.result)
 
-        try:
-            self.load_history()
-        except Exception as e:
-            logging.warning(f"Could not load existing history: {e}")
 
-        logging.info("Calculator initialized with configuration")
+class AutoSaveWatcher(CalculationWatcher):
+    """Automatically saves history to CSV after each calculation."""
 
-    def _setup_logging(self) -> None:
-        try:
-            log_file = self.config.log_file.resolve()
-            logging.basicConfig(
-                filename=str(log_file),
-                level=logging.INFO,
-                format='%(asctime)s - %(levelname)s - %(message)s',
-                force=True
-            )
-            logging.info(f"Logging initialized at: {log_file}")
-        except Exception as e:
-            print(f"Error setting up logging: {e}")
-            raise
+    def __init__(self, history: CalculationHistory, file_path: str):
+        self.history = history
+        self.file_path = file_path
 
-    def _setup_directories(self) -> None:
-        self.config.history_dir.mkdir(parents=True, exist_ok=True)
-        self.config.log_dir.mkdir(parents=True, exist_ok=True)
+    def notify(self, calc: Calculation) -> None:
+        if self.history.get_count() > 0:
+            try:
+                self.history.save_to_csv(self.file_path)
+            except HistoryError:
+                pass  # Silently ignore save errors
 
-    # Observer methods
-    def add_observer(self, observer: HistoryObserver) -> None:
-        self.observers.append(observer)
-        logging.info(f"Added observer: {observer.__class__.__name__}")
 
-    def remove_observer(self, observer: HistoryObserver) -> None:
-        if observer in self.observers:
-            self.observers.remove(observer)
-            logging.info(f"Removed observer: {observer.__class__.__name__}")
+# ---------------- Calculator Core ---------------- #
 
-    def notify_observers(self, calculation: Calculation) -> None:
-        for observer in self.observers:
-            observer.update(calculation)
+class CalculatorApp:
+    """Core calculator class with REPL interface."""
 
-    # Strategy pattern
-    def set_operation(self, operation: Union[Operation, str]) -> None:
+    def __init__(self):
+        """Initialize calculator components."""
+        self.config = CalculatorConfig()
+        self.logger = Logger()
+        self.history = CalculationHistory(max_size=self.config.max_history_size)
+        self.undo_manager = UndoRedoManager()
+        self.watchers: List[CalculationWatcher] = []
+
+        # Register default observers
+        self.register_watcher(LogWatcher(self.logger))
+        if self.config.auto_save:
+            self.register_watcher(AutoSaveWatcher(self.history, self.config.history_file))
+
+        self.logger.info("Calculator initialized")
+
+    # ---------------- Observer Methods ---------------- #
+
+    def register_watcher(self, watcher: CalculationWatcher) -> None:
+        """Attach a new watcher to receive calculation notifications."""
+        self.watchers.append(watcher)
+
+    def notify_watchers(self, calc: Calculation) -> None:
+        """Notify all attached watchers about a calculation."""
+        for watcher in self.watchers:
+            watcher.notify(calc)
+
+    # ---------------- Calculation Methods ---------------- #
+
+    def execute_operation(self, op_name: str, a: float, b: float) -> float:
         """
-        Set the current operation strategy.
-        Can pass either an Operation instance or a string operation name.
+        Execute an operation and update history.
+
+        Args:
+            op_name: Operation name
+            a: First operand
+            b: Second operand
+
+        Returns:
+            Computed result
         """
-        if isinstance(operation, str):
-            self.operation_strategy = OperationFactory.create_operation(operation)
-        elif isinstance(operation, Operation):
-            self.operation_strategy = operation
-        else:
-            raise TypeError("Operation must be an Operation instance or a string")
-        logging.info(f"Set operation: {self.operation_strategy}")
+        a = validate_number(a, "operand_a")
+        b = validate_number(b, "operand_b")
+        validate_in_range(a, self.config.max_input_value, "operand_a")
+        validate_in_range(b, self.config.max_input_value, "operand_b")
 
-    def perform_operation(self, a: Union[str, Number], b: Union[str, Number]) -> Decimal:
-        if not self.operation_strategy:
-            raise OperationError("No operation set")
+        # Save current history for undo
+        self.undo_manager.record_state(self.history.get_history())
 
+        operation = OperationFactory.create_operation(op_name)
+        calc = Calculation(operation, a, b)
+        result = calc.execute()
+        calc.result = round(result, self.config.precision)
+        self.history.add_calculation(calc)
+        self.notify_watchers(calc)
+
+        return calc.result
+
+    # ---------------- Undo/Redo ---------------- #
+
+    def undo(self) -> None:
+        """Undo last calculation."""
         try:
-            validated_a = InputValidator.validate_number(a, self.config)
-            validated_b = InputValidator.validate_number(b, self.config)
+            restored_history = self.undo_manager.undo(self.history.get_history())
+            self.history._history = restored_history
+            self.logger.info("Undo performed")
+        except HistoryError as e:
+            print(f"Error: {e}")
 
-            result = self.operation_strategy.execute(validated_a, validated_b)
+    def redo(self) -> None:
+        """Redo last undone calculation."""
+        try:
+            restored_history = self.undo_manager.redo()
+            self.history._history = restored_history
+            self.logger.info("Redo performed")
+        except HistoryError as e:
+            print(f"Error: {e}")
 
-            calculation = Calculation(
-                operation=str(self.operation_strategy),
-                operand1=validated_a,
-                operand2=validated_b,
-                result=result
-            )
+    # ---------------- History Management ---------------- #
 
-            # Save undo state
-            self.undo_stack.append(CalculatorMemento(self.history.copy()))
-            self.redo_stack.clear()
-
-            # Update history
-            self.history.append(calculation)
-            if len(self.history) > self.config.max_history_size:
-                self.history.pop(0)
-
-            self.notify_observers(calculation)
-            return result
-
-        except ValidationError as e:
-            logging.error(f"Validation error: {str(e)}")
-            raise
-        except Exception as e:
-            logging.error(f"Operation failed: {str(e)}")
-            raise OperationError(f"Operation failed: {str(e)}")
-
-    # Undo/redo methods
-    def undo(self) -> bool:
-        if not self.undo_stack:
-            logging.info("Undo stack empty, cannot undo")
-            return False
-        memento = self.undo_stack.pop()
-        self.redo_stack.append(CalculatorMemento(self.history.copy()))
-        self.history = memento.history.copy()
-        logging.info("Undo performed")
-        return True
-
-    def redo(self) -> bool:
-        if not self.redo_stack:
-            logging.info("Redo stack empty, cannot redo")
-            return False
-        memento = self.redo_stack.pop()
-        self.undo_stack.append(CalculatorMemento(self.history.copy()))
-        self.history = memento.history.copy()
-        logging.info("Redo performed")
-        return True
-
-    # History management
-    def show_history(self) -> List[str]:
-        return [f"{calc.operation}({calc.operand1}, {calc.operand2}) = {calc.result}" for calc in self.history]
+    def show_history(self) -> None:
+        print("\n" + str(self.history))
 
     def clear_history(self) -> None:
-        self.history.clear()
-        self.undo_stack.clear()
-        self.redo_stack.clear()
-        logging.info("History cleared")
+        self.history.clear_history()
+        self.undo_manager.reset()
+        self.logger.info("History cleared")
+        print("History cleared")
 
     def save_history(self) -> None:
-        for observer in self.observers:
-            if isinstance(observer, AutoSaveObserver):
-                observer.save(self.history)
+        try:
+            self.history.save_to_csv(self.config.history_file)
+            self.logger.info(f"History saved to {self.config.history_file}")
+            print(f"History saved to {self.config.history_file}")
+        except HistoryError as e:
+            print(f"Error: {e}")
 
     def load_history(self) -> None:
-        for observer in self.observers:
-            if isinstance(observer, AutoSaveObserver):
-                loaded = observer.load()
-                if loaded is not None:
-                    self.history = loaded
+        try:
+            self.history.load_from_csv(self.config.history_file)
+            self.logger.info(f"History loaded from {self.config.history_file}")
+            print(f"History loaded from {self.config.history_file}")
+        except HistoryError as e:
+            print(f"Error: {e}")
 
-    # Dynamic help menu
-    def get_available_operations(self) -> List[str]:
+    # ---------------- REPL & Help ---------------- #
+
+    def show_help(self) -> None:
+        help_text = """
+Available Commands:
+------------------
+Operations:
+  add <a> <b>, subtract <a> <b>, multiply <a> <b>, divide <a> <b>
+  power <a> <b>, root <a> <b>, modulus <a> <b>, int_divide <a> <b>
+  percent <a> <b>, abs_diff <a> <b>
+
+History:
+  history - show history
+  clear   - clear history
+  undo    - undo last
+  redo    - redo last
+  save    - save to CSV
+  load    - load from CSV
+
+Other:
+  help - show this help
+  exit - exit calculator
         """
-        Returns a list of all available operations dynamically from the OperationFactory.
-        """
-        return OperationFactory.list_operations()
+        print(help_text)
+
+    def repl(self) -> None:
+        """Start Read-Eval-Print Loop interface."""
+        print("Calculator REPL - Type 'help' for commands")
+        self.logger.info("REPL started")
+
+        while True:
+            try:
+                raw_input = input("> ").strip().lower()
+                if not raw_input:
+                    continue
+
+                tokens = raw_input.split()
+                cmd = tokens[0]
+
+                if cmd == "exit":
+                    print("Goodbye!")
+                    self.logger.info("Calculator exiting")
+                    break
+                elif cmd == "help":
+                    self.show_help()
+                elif cmd == "history":
+                    self.show_history()
+                elif cmd == "clear":
+                    self.clear_history()
+                elif cmd == "undo":
+                    self.undo()
+                    print("Undo successful")
+                    self.show_history()
+                elif cmd == "redo":
+                    self.redo()
+                    print("Redo successful")
+                    self.show_history()
+                elif cmd == "save":
+                    self.save_history()
+                elif cmd == "load":
+                    self.load_history()
+                elif cmd in OperationFactory.get_available_operations():
+                    if len(tokens) != 3:
+                        print(f"Error: {cmd} requires exactly 2 numbers")
+                        continue
+                    try:
+                        result = self.execute_operation(cmd, tokens[1], tokens[2])
+                        print(f"Result: {result}")
+                    except (OperationError, ValidationError) as e:
+                        print(f"Error: {e}")
+                        self.logger.error(str(e))
+                else:
+                    print(f"Unknown command: {cmd}")
+            except KeyboardInterrupt:
+                print("\nUse 'exit' to quit")
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                self.logger.error(f"Unexpected error: {e}")
+
+
+# ---------------- Entry Point ---------------- #
+
+def main():
+    calc = CalculatorApp()
+    calc.repl()
+
+
+if __name__ == "__main__":
+    main()

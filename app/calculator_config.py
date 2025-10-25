@@ -1,118 +1,62 @@
-########################
-# Calculator Config    #
-########################
+"""
+Configuration handler for the calculator app.
+Loads settings from environment or uses defaults.
+"""
 
-from dataclasses import dataclass
-from decimal import Decimal
-from numbers import Number
-from pathlib import Path
 import os
-from typing import Optional
-
 from dotenv import load_dotenv
-
 from app.exceptions import ConfigurationError
 
-# Load environment variables from .env file
-load_dotenv()
 
+class CalcSettings:
+    """Loads and stores all calculator settings."""
 
-def get_project_root() -> Path:
-    """
-    Get the root directory of the project.
+    def __init__(self):
+        """Initialize and validate settings."""
+        load_dotenv()
 
-    Returns:
-        Path: Project root directory path.
-    """
-    current_file = Path(__file__)
-    return current_file.parent.parent
+        # Directory paths
+        self.logs_dir = os.getenv("CALCULATOR_LOG_DIR") or "logs"
+        self.history_dir = os.getenv("CALCULATOR_HISTORY_DIR") or "history"
 
+        # Configuration values with defaults
+        self.max_history = self._get_env("CALCULATOR_MAX_HISTORY_SIZE", default=100, cast=int)
+        self.precision = self._get_env("CALCULATOR_PRECISION", default=2, cast=int)
+        self.max_input = self._get_env("CALCULATOR_MAX_INPUT_VALUE", default=1_000_000.0, cast=float)
+        self.auto_save = self._get_env("CALCULATOR_AUTO_SAVE", default=True, cast=bool)
+        self.encoding = os.getenv("CALCULATOR_DEFAULT_ENCODING") or "utf-8"
 
-@dataclass
-class CalculatorConfig:
-    """
-    Configuration settings for the Calculator.
+        # Files
+        self.log_file = os.getenv("CALCULATOR_LOG_FILE") or os.path.join(self.logs_dir, "calculator.log")
+        self.history_file = os.getenv("CALCULATOR_HISTORY_FILE") or os.path.join(self.history_dir, "calc_history.csv")
 
-    Supports environment variables, default values, and validation.
-    """
+        # Make sure directories exist
+        self._ensure_dirs([self.logs_dir, self.history_dir])
 
-    base_dir: Path
-    max_history_size: int
-    auto_save: bool
-    precision: int
-    max_input_value: Decimal
-    default_encoding: str
+    def _get_env(self, key: str, default, cast):
+        """
+        Fetch an environment variable and cast it to the correct type.
+        Falls back to default if not found. Raises error if cast fails.
+        """
+        val = os.getenv(key)
+        if val is None:
+            return default
 
-    def __init__(
-        self,
-        base_dir: Optional[Path] = None,
-        max_history_size: Optional[int] = None,
-        auto_save: Optional[bool] = None,
-        precision: Optional[int] = None,
-        max_input_value: Optional[Number] = None,
-        default_encoding: Optional[str] = None
-    ):
-        project_root = get_project_root()
-        self.base_dir = base_dir or Path(
-            os.getenv('CALCULATOR_BASE_DIR', str(project_root))
-        ).resolve()
+        try:
+            if cast is bool:
+                return val.strip().lower() in ("true", "1", "yes", "on")
+            return cast(val)
+        except ValueError:
+            raise ConfigurationError(f"Invalid value for {key}: {val} (expected {cast.__name__})")
 
-        self.max_history_size = max_history_size or int(
-            os.getenv('CALCULATOR_MAX_HISTORY_SIZE', '1000')
-        )
+    @staticmethod
+    def _ensure_dirs(dirs):
+        """Create directories if they do not exist."""
+        for directory in dirs:
+            os.makedirs(directory, exist_ok=True)
 
-        auto_save_env = os.getenv('CALCULATOR_AUTO_SAVE', 'true').lower()
-        self.auto_save = auto_save if auto_save is not None else (
-            auto_save_env in ('true', '1')
-        )
-
-        self.precision = precision or int(os.getenv('CALCULATOR_PRECISION', '10'))
-
-        self.max_input_value = max_input_value or Decimal(
-            os.getenv('CALCULATOR_MAX_INPUT_VALUE', '1e999')
-        )
-
-        self.default_encoding = default_encoding or os.getenv(
-            'CALCULATOR_DEFAULT_ENCODING', 'utf-8'
-        )
-
-    @property
-    def log_dir(self) -> Path:
-        """Directory path for log files."""
-        return Path(os.getenv(
-            'CALCULATOR_LOG_DIR',
-            str(self.base_dir / "logs")
-        )).resolve()
-
-    @property
-    def history_dir(self) -> Path:
-        """Directory path for history files."""
-        return Path(os.getenv(
-            'CALCULATOR_HISTORY_DIR',
-            str(self.base_dir / "history")
-        )).resolve()
-
-    @property
-    def history_file(self) -> Path:
-        """CSV file path for storing calculator history."""
-        return Path(os.getenv(
-            'CALCULATOR_HISTORY_FILE',
-            str(self.history_dir / "calculator_history.csv")
-        )).resolve()
-
-    @property
-    def log_file(self) -> Path:
-        """File path for storing logs."""
-        return Path(os.getenv(
-            'CALCULATOR_LOG_FILE',
-            str(self.log_dir / "calculator.log")
-        )).resolve()
-
-    def validate(self) -> None:
-        """Validate configuration values."""
-        if self.max_history_size <= 0:
-            raise ConfigurationError("max_history_size must be positive")
-        if self.precision <= 0:
-            raise ConfigurationError("precision must be positive")
-        if self.max_input_value <= 0:
-            raise ConfigurationError("max_input_value must be positive")
+    def __repr__(self):
+        """Readable representation for debugging."""
+        return (f"CalcSettings(logs_dir='{self.logs_dir}', "
+                f"history_dir='{self.history_dir}', max_history={self.max_history}, "
+                f"precision={self.precision}, max_input={self.max_input}, auto_save={self.auto_save})")

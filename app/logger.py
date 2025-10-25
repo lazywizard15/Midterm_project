@@ -1,72 +1,137 @@
-import logging
-import os
-import pandas as pd
-from colorama import Fore, Style
-from app.calculator_config import CalculatorConfig
+"""
+Arithmetic operations and factory for calculator.
+Provides addition, subtraction, multiplication, division, power, root, modulus, integer division, percentage, and absolute difference.
+"""
 
-# Base Observer class
-class HistoryObserver:
-    def update(self, calculation): 
+from abc import ABC, abstractmethod
+from app.exceptions import OperationError
+
+# Base Operation
+class CalcOperation(ABC):
+    """Abstract base for all arithmetic operations."""
+
+    @abstractmethod
+    def execute(self, x: float, y: float) -> float:
+        """Perform the operation on x and y."""
         pass
 
-# Logging observer for console + file logging
-class LoggingObserver(HistoryObserver):
-    def __init__(self, config: CalculatorConfig = None):
-        if config is None:
-            config = CalculatorConfig()  # Default config if none provided
-        self.config = config
-        os.makedirs(self.config.log_dir, exist_ok=True)
-        log_file = os.path.join(self.config.log_dir, "calculator.log")
+    @abstractmethod
+    def symbol(self) -> str:
+        """Return the symbolic representation of the operation."""
+        pass
 
-        logging.basicConfig(
-            filename=log_file,
-            level=logging.INFO,
-            format="%(asctime)s | %(levelname)s | %(message)s",
-            force=True
-        )
+# Concrete Operations
+class SumOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        return x + y
 
-    def update(self, calc):
-        logging.info(f"{calc}")
-        print(Fore.GREEN + f"[LOG] {calc}" + Style.RESET_ALL)
+    def symbol(self) -> str:
+        return "+"
 
-# Auto-save observer for saving history to CSV
-class AutoSaveObserver(HistoryObserver):
-    def __init__(self, calculator, history_file="history.csv"):
-        self.calculator = calculator
-        self.history_file = os.path.join(self.calculator.config.history_dir, history_file)
-        os.makedirs(self.calculator.config.history_dir, exist_ok=True)
+class SubtractOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        return x - y
 
-    def update(self, calc):
-        self.save(self.calculator.history)
+    def symbol(self) -> str:
+        return "-"
 
-    def save(self, history):
-        """Save full history to CSV"""
-        if not history:
-            return
-        df = pd.DataFrame([{
-            'operation': str(c.operation),
-            'operand1': str(c.operand1),
-            'operand2': str(c.operand2),
-            'result': str(c.result),
-            'timestamp': c.timestamp
-        } for c in history])
+class MultiplyOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        return x * y
 
-        df.to_csv(self.history_file, index=False)
+    def symbol(self) -> str:
+        return "*"
 
-    def load(self):
-        """Load history from CSV"""
-        if os.path.exists(self.history_file):
-            df = pd.read_csv(self.history_file)
-            if df.empty:
-                return []
-            from app.calculation import Calculation
-            return [
-                Calculation.from_dict({
-                    'operation': row['operation'],
-                    'operand1': row['operand1'],
-                    'operand2': row['operand2'],
-                    'result': row['result'],
-                    'timestamp': row['timestamp']
-                }) for _, row in df.iterrows()
-            ]
-        return []
+class DivideOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        if y == 0:
+            raise OperationError("Division by zero is not allowed")
+        return x / y
+
+    def symbol(self) -> str:
+        return "/"
+
+class IntDivideOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        if y == 0:
+            raise OperationError("Cannot divide by zero")
+        return x // y
+
+    def symbol(self) -> str:
+        return "//"
+
+class ModulusOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        if y == 0:
+            raise OperationError("Modulo by zero is invalid")
+        return x % y
+
+    def symbol(self) -> str:
+        return "%"
+
+class PowerOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        try:
+            return x ** y
+        except (OverflowError, ValueError) as e:
+            raise OperationError(f"Power operation failed: {e}")
+
+    def symbol(self) -> str:
+        return "^"
+
+class RootOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        if y == 0:
+            raise OperationError("Cannot calculate 0th root")
+        if x < 0 and y % 2 == 0:
+            raise OperationError("Even root of negative number is invalid")
+        return x ** (1 / y)
+
+    def symbol(self) -> str:
+        return "√"
+
+class PercentOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        if y == 0:
+            raise OperationError("Cannot calculate percentage with denominator zero")
+        return (x / y) * 100
+
+    def symbol(self) -> str:
+        return "%of"
+
+class AbsDiffOp(CalcOperation):
+    def execute(self, x: float, y: float) -> float:
+        return abs(x - y)
+
+    def symbol(self) -> str:
+        return "|diff|"
+
+# Factory for creating operations
+class CalcOpFactory:
+    """Factory for generating operation instances based on a name."""
+
+    _operation_map = {
+        "add": SumOp,
+        "subtract": SubtractOp,
+        "multiply": MultiplyOp,
+        "divide": DivideOp,
+        "power": PowerOp,
+        "root": RootOp,
+        "modulus": ModulusOp,
+        "int_divide": IntDivideOp,
+        "percent": PercentOp,
+        "abs_diff": AbsDiffOp,
+    }
+
+    @classmethod
+    def create(cls, op_name: str) -> CalcOperation:
+        """Return an operation instance corresponding to the name."""
+        op_class = cls._operation_map.get(op_name.lower())
+        if op_class is None:
+            raise OperationError(f"Unknown operation requested: {op_name}")
+        return op_class()
+
+    @classmethod
+    def list_operations(cls) -> list:
+        """Return all supported operation names."""
+        return list(cls._operation_map.keys())

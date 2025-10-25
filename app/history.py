@@ -1,206 +1,119 @@
-########################
-# History Management    #
-########################
+"""
+Calculation record manager for the calculator.
+Handles storing, saving, and restoring previous calculations.
+"""
 
-from abc import ABC, abstractmethod
-import logging
-import os
 import pandas as pd
-from typing import Any, List, Optional
+from datetime import datetime
+from typing import List, Optional
 from app.calculation import Calculation
-from app.calculator_config import CalculatorConfig
+from app.operations import OperationFactory
+from app.exceptions import CalcHistoryError
 
 
-class HistoryObserver(ABC):
-    """
-    Abstract base class for calculator observers.
-
-    Observers monitor new calculations and react to them.
-    """
-
-    @abstractmethod
-    def update(self, calculation: Calculation) -> None:
+class CalcHistory:
+    """Manages past calculation records."""
+    
+    def __init__(self, capacity: int = 100):
         """
-        Handle a new calculation event.
-
+        Initialize history manager.
+        
         Args:
-            calculation (Calculation): The calculation performed.
+            capacity: Maximum number of records to keep
         """
-        pass
-
-
-class LoggingObserver(HistoryObserver):
-    """
-    Observer that logs calculations to a file.
-    """
-
-    def update(self, calculation: Calculation) -> None:
-        if calculation is None:
-            raise AttributeError("Calculation cannot be None")
-        logging.info(
-            f"Calculation performed: {calculation.operation} "
-            f"({calculation.operand1}, {calculation.operand2}) = {calculation.result}"
-        )
-
-
-class AutoSaveObserver(HistoryObserver):
-    """
-    Observer that automatically saves calculations to a CSV file.
-    """
-
-    def __init__(self, calculator: Any, history_file: Optional[str] = None):
+        self._records: List[Calculation] = []
+        self._capacity = capacity
+    
+    def record(self, calc: Calculation) -> None:
         """
-        Initialize the AutoSaveObserver.
-
+        Add a new calculation to history.
+        
         Args:
-            calculator (Any): Calculator instance with 'config' and 'history'.
-            history_file (Optional[str]): Custom history file name. Defaults to calculator config.
+            calc: Calculation object to store
         """
-        if not hasattr(calculator, 'config') or not hasattr(calculator, 'history'):
-            raise TypeError("Calculator must have 'config' and 'history' attributes")
-
-        self.calculator = calculator
-        self.config: CalculatorConfig = calculator.config
-        self.history_file = (
-            os.path.join(self.config.history_dir, history_file)
-            if history_file else str(self.config.history_file)
-        )
-        os.makedirs(self.config.history_dir, exist_ok=True)
-
-    def update(self, calculation: Calculation) -> None:
-        """
-        Auto-save calculation history when a new calculation is performed.
-        """
-        if calculation is None:
-            raise AttributeError("Calculation cannot be None")
-        if self.config.auto_save:
-            self.save(self.calculator.history)
-            logging.info("History auto-saved")
-
-    def save(self, history: List[Calculation]) -> None:
-        """
-        Save the calculation history to CSV.
-
-        Args:
-            history (List[Calculation]): List of Calculation objects to save.
-        """
-        df = pd.DataFrame([calc.to_dict() for calc in history])
-        if os.path.exists(self.history_file):
-            df_existing = pd.read_csv(self.history_file)
-            df = pd.concat([df_existing, df], ignore_index=True)
-        df.to_csv(self.history_file, index=False)
-
-    def load(self) -> Optional[List[Calculation]]:
-        """
-        Load the calculation history from CSV.
-
-        Returns:
-            Optional[List[Calculation]]: List of Calculation objects or None if file missing.
-        """
-        if not os.path.exists(self.history_file):
+        self._records.append(calc)
+        if len(self._records) > self._capacity:
+            self._records.pop(0)
+    
+    def get_records(self) -> List[Calculation]:
+        """Return a copy of all stored calculations."""
+        return self._records.copy()
+    
+    def last(self) -> Optional[Calculation]:
+        """Return the most recent calculation, or None if empty."""
+        if not self._records:
             return None
-        df = pd.read_csv(self.history_file)
-        return [Calculation.from_dict(row.to_dict()) for _, row in df.iterrows()]
-########################
-# History Management    #
-########################
-
-from abc import ABC, abstractmethod
-import logging
-import os
-import pandas as pd
-from typing import Any, List, Optional
-from app.calculation import Calculation
-from app.calculator_config import CalculatorConfig
-
-
-class HistoryObserver(ABC):
-    """
-    Abstract base class for calculator observers.
-
-    Observers monitor new calculations and react to them.
-    """
-
-    @abstractmethod
-    def update(self, calculation: Calculation) -> None:
+        return self._records[-1]
+    
+    def count(self) -> int:
+        """Return number of stored calculations."""
+        return len(self._records)
+    
+    def erase(self) -> None:
+        """Clear all stored calculation records."""
+        self._records.clear()
+    
+    # --- CSV Persistence Methods ---
+    def save_csv(self, path: str) -> None:
         """
-        Handle a new calculation event.
-
+        Save all records to a CSV file.
+        
         Args:
-            calculation (Calculation): The calculation performed.
+            path: Destination file path
+            
+        Raises:
+            CalcHistoryError: If saving fails or history is empty
         """
-        pass
-
-
-class LoggingObserver(HistoryObserver):
-    """
-    Observer that logs calculations to a file.
-    """
-
-    def update(self, calculation: Calculation) -> None:
-        if calculation is None:
-            raise AttributeError("Calculation cannot be None")
-        logging.info(
-            f"Calculation performed: {calculation.operation} "
-            f"({calculation.operand1}, {calculation.operand2}) = {calculation.result}"
-        )
-
-
-class AutoSaveObserver(HistoryObserver):
-    """
-    Observer that automatically saves calculations to a CSV file.
-    """
-
-    def __init__(self, calculator: Any, history_file: Optional[str] = None):
+        if not self._records:
+            raise CalcHistoryError("No records to save")
+        
+        try:
+            data = [c.to_dict() for c in self._records]
+            df = pd.DataFrame(data)
+            df.to_csv(path, index=False)
+        except Exception as e:
+            raise CalcHistoryError(f"Failed to save records: {str(e)}")
+    
+    def load_csv(self, path: str) -> None:
         """
-        Initialize the AutoSaveObserver.
-
+        Load calculation records from a CSV file.
+        
         Args:
-            calculator (Any): Calculator instance with 'config' and 'history'.
-            history_file (Optional[str]): Custom history file name. Defaults to calculator config.
+            path: CSV file path
+            
+        Raises:
+            CalcHistoryError: If loading fails
         """
-        if not hasattr(calculator, 'config') or not hasattr(calculator, 'history'):
-            raise TypeError("Calculator must have 'config' and 'history' attributes")
-
-        self.calculator = calculator
-        self.config: CalculatorConfig = calculator.config
-        self.history_file = (
-            os.path.join(self.config.history_dir, history_file)
-            if history_file else str(self.config.history_file)
-        )
-        os.makedirs(self.config.history_dir, exist_ok=True)
-
-    def update(self, calculation: Calculation) -> None:
-        """
-        Auto-save calculation history when a new calculation is performed.
-        """
-        if calculation is None:
-            raise AttributeError("Calculation cannot be None")
-        if self.config.auto_save:
-            self.save(self.calculator.history)
-            logging.info("History auto-saved")
-
-    def save(self, history: List[Calculation]) -> None:
-        """
-        Save the calculation history to CSV.
-
-        Args:
-            history (List[Calculation]): List of Calculation objects to save.
-        """
-        df = pd.DataFrame([calc.to_dict() for calc in history])
-        if os.path.exists(self.history_file):
-            df_existing = pd.read_csv(self.history_file)
-            df = pd.concat([df_existing, df], ignore_index=True)
-        df.to_csv(self.history_file, index=False)
-
-    def load(self) -> Optional[List[Calculation]]:
-        """
-        Load the calculation history from CSV.
-
-        Returns:
-            Optional[List[Calculation]]: List of Calculation objects or None if file missing.
-        """
-        if not os.path.exists(self.history_file):
-            return None
-        df = pd.read_csv(self.history_file)
-        return [Calculation.from_dict(row.to_dict()) for _, row in df.iterrows()]
+        try:
+            df = pd.read_csv(path)
+            self._records.clear()
+            
+            for _, row in df.iterrows():
+                try:
+                    op = OperationFactory.create_operation(row['operation'])
+                    calc = Calculation(op, float(row['operand_a']), float(row['operand_b']))
+                    calc.result = float(row['result'])
+                    calc.timestamp = pd.to_datetime(row['timestamp'])
+                    self._records.append(calc)
+                except Exception:
+                    continue  # Skip malformed rows
+            
+            # Trim to capacity
+            if len(self._records) > self._capacity:
+                self._records = self._records[-self._capacity:]
+        except FileNotFoundError:
+            raise CalcHistoryError(f"File not found: {path}")
+        except Exception as e:
+            raise CalcHistoryError(f"Failed to load records: {str(e)}")
+    
+    # --- String Representations ---
+    def __str__(self) -> str:
+        if not self._records:
+            return "No calculation records available"
+        lines = ["Calculation Records:"]
+        for i, rec in enumerate(self._records, 1):
+            lines.append(f"{i}. {rec}")
+        return "\n".join(lines)
+    
+    def __repr__(self) -> str:
+        return f"CalcHistory(size={len(self._records)}, capacity={self._capacity})"

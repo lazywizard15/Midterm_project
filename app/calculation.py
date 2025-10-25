@@ -1,126 +1,62 @@
 """
-This module defines the Calculation class for representing mathematical calculations.
+Represents a single arithmetic operation with operands, result, and timestamp.
 """
-from decimal import Decimal, InvalidOperation
+
 from datetime import datetime
-import logging
-from app.operations import OperationFactory
-from app.exceptions import ValidationError
+from app.operations import Operation
 
 
-class Calculation:
-    """
-    Represents a single calculation with operation, operands, result, and timestamp.
-    """
+class CalcRecord:
+    """Holds details for a single calculation event."""
 
-    def __init__(self, operation: str, operand1: Decimal, operand2: Decimal):
+    def __init__(self, op: Operation, first_num: float, second_num: float):
         """
-        Initialize a Calculation instance.
-        
+        Initialize a calculation record.
+
         Args:
-            operation (str): The operation name.
-            operand1 (Decimal): The first operand.
-            operand2 (Decimal): The second operand.
+            op: Operation instance to perform
+            first_num: First numeric operand
+            second_num: Second numeric operand
         """
-        self.operation = operation
-        self.operand1 = operand1
-        self.operand2 = operand2
-        self.timestamp = datetime.now()
-        
-        # Compute result
-        operation_obj = OperationFactory.create_operation(operation)
-        self.result = operation_obj.execute(operand1, operand2)
+        self.op_instance = op
+        self.num1 = first_num
+        self.num2 = second_num
+        self.output = None
+        self.time_created = datetime.now()
 
-    def to_dict(self) -> dict:
+    def run(self) -> float:
         """
-        Convert the Calculation instance to a dictionary.
-        
-        Returns:
-            dict: Dictionary representation of the calculation.
-        """
-        return {
-            'operation': self.operation,
-            'operand1': str(self.operand1),
-            'operand2': str(self.operand2),
-            'result': str(self.result),
-            'timestamp': self.timestamp.isoformat()
-        }
+        Execute the calculation using the operation.
 
-    @classmethod
-    def from_dict(cls, data: dict) -> 'Calculation':
-        """
-        Create a Calculation instance from a dictionary.
-        
-        Args:
-            data (dict): Dictionary containing calculation data.
-            
         Returns:
-            Calculation: New Calculation instance.
-            
-        Raises:
-            ValidationError: If required fields are missing or invalid.
+            Computed result
         """
-        try:
-            operation = data['operation']
-            operand1 = Decimal(str(data['operand1']))
-            operand2 = Decimal(str(data['operand2']))
-            saved_result = Decimal(str(data['result']))
-            
-            # Create calculation and compute result
-            calc = cls(operation, operand1, operand2)
-            
-            # Check if saved result matches computed result
-            if calc.result != saved_result:
-                logging.warning(
-                    f"Loaded calculation result {saved_result} differs from computed result {calc.result}"
-                )
-            
-            # Use saved result
-            calc.result = saved_result
-            
-            # Set timestamp if provided
-            if 'timestamp' in data:
-                calc.timestamp = datetime.fromisoformat(data['timestamp'])
-            
-            return calc
-            
-        except (KeyError, ValueError, InvalidOperation) as e:
-            raise ValidationError(f"Invalid calculation data: {str(e)}")
+        self.output = self.op_instance.execute(self.num1, self.num2)
+        return self.output
 
-    def format_result(self, precision: int = 10) -> str:
-        """
-        Format the result with specified precision.
-        
-        Args:
-            precision (int): Number of decimal places.
-            
-        Returns:
-            str: Formatted result string.
-        """
-        return f"{self.result:.{precision}f}".rstrip('0').rstrip('.')
-
-    def __eq__(self, other) -> bool:
-        """
-        Check equality with another Calculation instance.
-        
-        Args:
-            other: Another Calculation instance.
-            
-        Returns:
-            bool: True if calculations are equal, False otherwise.
-        """
-        if not isinstance(other, Calculation):
-            return False
-        return (self.operation == other.operation and
-                self.operand1 == other.operand1 and
-                self.operand2 == other.operand2 and
-                self.result == other.result)
+    def __str__(self) -> str:
+        """Readable string for display purposes."""
+        symbol = self.op_instance.get_symbol()
+        if self.output is not None:
+            return f"{self.num1} {symbol} {self.num2} = {self.output}"
+        return f"{self.num1} {symbol} {self.num2}"
 
     def __repr__(self) -> str:
+        """Detailed developer-friendly representation."""
+        return (f"CalcRecord({self.op_instance.__class__.__name__}, "
+                f"{self.num1}, {self.num2}, output={self.output})")
+
+    def as_dict(self) -> dict:
         """
-        Return a string representation of the Calculation.
-        
+        Convert calculation to a dictionary for saving or serialization.
+
         Returns:
-            str: String representation.
+            Dictionary with operation name, operands, result, and timestamp
         """
-        return f"Calculation({self.operation}, {self.operand1}, {self.operand2}) = {self.result}"
+        return {
+            'operation': self.op_instance.__class__.__name__.replace('Operation', '').lower(),
+            'num1': self.num1,
+            'num2': self.num2,
+            'output': self.output,
+            'time_created': self.time_created.isoformat()
+        }

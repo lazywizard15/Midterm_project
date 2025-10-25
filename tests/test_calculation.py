@@ -1,132 +1,116 @@
+"""
+Unit tests for CalcRecord class.
+"""
+
 import pytest
-from decimal import Decimal
 from datetime import datetime
-from app.calculation import Calculation
+from app.calculation import CalcRecord
+from app.operations import AddOperation, MultiplyOperation, DivideOperation
 from app.exceptions import OperationError
-import logging
 
 
-def test_addition():
-    calc = Calculation(operation="Addition", operand1=Decimal("2"), operand2=Decimal("3"))
-    assert calc.result == Decimal("5")
+class TestCalcRecord:
+    """Tests for CalcRecord class."""
 
+    def test_record_initialization(self):
+        """Test that CalcRecord initializes correctly."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
 
-def test_subtraction():
-    calc = Calculation(operation="Subtraction", operand1=Decimal("5"), operand2=Decimal("3"))
-    assert calc.result == Decimal("2")
+        assert record.op_instance == op
+        assert record.num1 == 5
+        assert record.num2 == 3
+        assert record.output is None
+        assert isinstance(record.time_created, datetime)
 
+    def test_record_run(self):
+        """Test that CalcRecord executes correctly."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
 
-def test_multiplication():
-    calc = Calculation(operation="Multiplication", operand1=Decimal("4"), operand2=Decimal("2"))
-    assert calc.result == Decimal("8")
+        result = record.run()
 
+        assert result == 8
+        assert record.output == 8
 
-def test_division():
-    calc = Calculation(operation="Division", operand1=Decimal("8"), operand2=Decimal("2"))
-    assert calc.result == Decimal("4")
+    def test_record_run_multiply(self):
+        """Test CalcRecord with multiplication."""
+        op = MultiplyOperation()
+        record = CalcRecord(op, 4, 7)
 
+        result = record.run()
 
-def test_division_by_zero():
-    with pytest.raises(OperationError, match="Division by zero is not allowed"):
-        Calculation(operation="Division", operand1=Decimal("8"), operand2=Decimal("0"))
+        assert result == 28
+        assert record.output == 28
 
+    def test_record_run_with_error(self):
+        """Test that operation errors propagate."""
+        op = DivideOperation()
+        record = CalcRecord(op, 10, 0)
 
-def test_power():
-    calc = Calculation(operation="Power", operand1=Decimal("2"), operand2=Decimal("3"))
-    assert calc.result == Decimal("8")
+        with pytest.raises(OperationError):
+            record.run()
 
+    def test_record_str_with_output(self):
+        """Test string representation with output."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
+        record.run()
 
-def test_negative_power():
-    with pytest.raises(OperationError, match="Negative exponents are not supported"):
-        Calculation(operation="Power", operand1=Decimal("2"), operand2=Decimal("-3"))
+        result_str = str(record)
 
+        assert "5" in result_str
+        assert "3" in result_str
+        assert "8" in result_str
+        assert "+" in result_str
 
-def test_root():
-    calc = Calculation(operation="Root", operand1=Decimal("16"), operand2=Decimal("2"))
-    assert calc.result == Decimal("4")
+    def test_record_str_without_output(self):
+        """Test string representation without output."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
 
+        result_str = str(record)
 
-def test_invalid_root():
-    with pytest.raises(OperationError, match="Cannot calculate root of negative number"):
-        Calculation(operation="Root", operand1=Decimal("-16"), operand2=Decimal("2"))
+        assert "5" in result_str
+        assert "3" in result_str
+        assert "+" in result_str
 
+    def test_record_repr(self):
+        """Test detailed representation."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
+        record.run()
 
-def test_unknown_operation():
-    with pytest.raises(OperationError, match="Unknown operation"):
-        Calculation(operation="Unknown", operand1=Decimal("5"), operand2=Decimal("3"))
+        repr_str = repr(record)
 
+        assert "CalcRecord" in repr_str
+        assert "AddOperation" in repr_str
+        assert "5" in repr_str
+        assert "3" in repr_str
 
-def test_to_dict():
-    calc = Calculation(operation="Addition", operand1=Decimal("2"), operand2=Decimal("3"))
-    result_dict = calc.to_dict()
-    assert result_dict == {
-        "operation": "Addition",
-        "operand1": "2",
-        "operand2": "3",
-        "result": "5",
-        "timestamp": calc.timestamp.isoformat()
-    }
+    def test_record_as_dict(self):
+        """Test conversion to dictionary."""
+        op = AddOperation()
+        record = CalcRecord(op, 5, 3)
+        record.run()
 
+        record_dict = record.as_dict()
 
-def test_from_dict():
-    data = {
-        "operation": "Addition",
-        "operand1": "2",
-        "operand2": "3",
-        "result": "5",
-        "timestamp": datetime.now().isoformat()
-    }
-    calc = Calculation.from_dict(data)
-    assert calc.operation == "Addition"
-    assert calc.operand1 == Decimal("2")
-    assert calc.operand2 == Decimal("3")
-    assert calc.result == Decimal("5")
+        assert record_dict['operation'] == 'add'
+        assert record_dict['num1'] == 5
+        assert record_dict['num2'] == 3
+        assert record_dict['output'] == 8
+        assert 'time_created' in record_dict
 
+    def test_record_as_dict_before_run(self):
+        """Test as_dict before execution."""
+        op = MultiplyOperation()
+        record = CalcRecord(op, 4, 5)
 
-def test_invalid_from_dict():
-    data = {
-        "operation": "Addition",
-        "operand1": "invalid",
-        "operand2": "3",
-        "result": "5",
-        "timestamp": datetime.now().isoformat()
-    }
-    with pytest.raises(OperationError, match="Invalid calculation data"):
-        Calculation.from_dict(data)
+        record_dict = record.as_dict()
 
-
-def test_format_result():
-    calc = Calculation(operation="Division", operand1=Decimal("1"), operand2=Decimal("3"))
-    assert calc.format_result(precision=2) == "0.33"
-    assert calc.format_result(precision=10) == "0.3333333333"
-
-
-def test_equality():
-    calc1 = Calculation(operation="Addition", operand1=Decimal("2"), operand2=Decimal("3"))
-    calc2 = Calculation(operation="Addition", operand1=Decimal("2"), operand2=Decimal("3"))
-    calc3 = Calculation(operation="Subtraction", operand1=Decimal("5"), operand2=Decimal("3"))
-    assert calc1 == calc2
-    assert calc1 != calc3
-
-
-# New Test to Cover Logging Warning
-def test_from_dict_result_mismatch(caplog):
-    """
-    Test the from_dict method to ensure it logs a warning when the saved result
-    does not match the computed result.
-    """
-    # Arrange
-    data = {
-        "operation": "Addition",
-        "operand1": "2",
-        "operand2": "3",
-        "result": "10",  # Incorrect result to trigger logging.warning
-        "timestamp": datetime.now().isoformat()
-    }
-
-    # Act
-    with caplog.at_level(logging.WARNING):
-        calc = Calculation.from_dict(data)
-
-    # Assert
-    assert "Loaded calculation result 10 differs from computed result 5" in caplog.text
+        assert record_dict['operation'] == 'multiply'
+        assert record_dict['num1'] == 4
+        assert record_dict['num2'] == 5
+        assert record_dict['output'] is None
+        assert 'time_created' in record_dict

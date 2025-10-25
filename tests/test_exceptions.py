@@ -9,7 +9,7 @@ def test_calculator_error_is_base_exception():
     assert str(exc_info.value) == "Base calculator error occurred"
 
 def test_validation_error_is_calculator_error():
-    with pytest.raises(CalculatorError) as exc_info:
+    with pytest.raises(CalculatorError):
         raise ValidationError("Validation failed")
     assert isinstance(exc_info.value, CalculatorError)
     assert str(exc_info.value) == "Validation failed"

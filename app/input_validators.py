@@ -1,45 +1,63 @@
-########################
-# Input Validation     #
-########################
+"""
+Validation routines for calculator inputs.
+"""
 
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
-from typing import Any
-from app.calculator_config import CalculatorConfig
 from app.exceptions import ValidationError
 
 
-@dataclass
-class InputValidator:
-    """Validates and sanitizes calculator inputs."""
+def ensure_numeric(val, name="value") -> float:
+    """
+    Confirm that the provided value can be interpreted as a number.
+    
+    Args:
+        val: Input to check
+        name: Name of the parameter for error messages
+    
+    Returns:
+        Value as float
+    
+    Raises:
+        ValidationError if conversion fails
+    """
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        raise ValidationError(f"Parameter '{name}' must be numeric, received '{val}'")
 
-    @staticmethod
-    def validate_number(value: Any, config: CalculatorConfig) -> Decimal:
-        """
-        Validate and convert input to Decimal.
 
-        Args:
-            value (Any): Input value to validate
-            config (CalculatorConfig): Calculator configuration
+def ensure_within_limit(val: float, maximum: float, name="value") -> None:
+    """
+    Ensure that the absolute value does not exceed the maximum allowed.
+    
+    Args:
+        val: Value to check
+        maximum: Maximum allowed absolute value
+        name: Name of the parameter for error messages
+    
+    Raises:
+        ValidationError if value is out of range
+    """
+    if abs(val) > maximum:
+        raise ValidationError(f"{name} cannot exceed {maximum}, got {val}")
 
-        Returns:
-            Decimal: Validated and converted number
 
-        Raises:
-            ValidationError: If input is invalid or exceeds max allowed value
-        """
-        try:
-            # Strip strings and convert to Decimal
-            if isinstance(value, str):
-                value = value.strip()
-            number = Decimal(str(value))
+def ensure_nonzero(val: float, name="value") -> None:
+    """
+    Confirm that a number is not zero.
+    
+    Raises:
+        ValidationError if value is zero
+    """
+    if val == 0:
+        raise ValidationError(f"{name} cannot be zero")
 
-            # Check against maximum allowed input
-            if abs(number) > config.max_input_value:
-                raise ValidationError(
-                    f"Value exceeds maximum allowed: {config.max_input_value}"
-                )
 
-            return number.normalize()
-        except InvalidOperation as e:
-            raise ValidationError(f"Invalid number format: {value}") from e
+def ensure_positive(val: float, name="value") -> None:
+    """
+    Confirm that a number is strictly positive.
+    
+    Raises:
+        ValidationError if value is zero or negative
+    """
+    if val <= 0:
+        raise ValidationError(f"{name} must be positive, got {val}")

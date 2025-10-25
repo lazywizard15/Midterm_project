@@ -1,71 +1,99 @@
-########################
-# Calculator Memento    #
-########################
+"""
+Memento implementation for calculator undo/redo functionality.
+"""
 
-from dataclasses import dataclass, field
-import datetime
-from typing import Any, Dict, List
-
+from copy import deepcopy
+from typing import List
 from app.calculation import Calculation
+from app.exceptions import HistoryError
 
 
-class Memento:
-    """Stores a snapshot of the calculator state."""
+class HistorySnapshot:
+    """Stores a snapshot of the calculation history."""
 
-    def __init__(self, state: List[Calculation]):
-        self.state = state.copy()
+    def __init__(self, records: List[Calculation]):
+        """
+        Save a deep copy of calculation records.
+
+        Args:
+            records: List of Calculation objects to snapshot
+        """
+        self._snapshot = deepcopy(records)
+
+    def retrieve(self) -> List[Calculation]:
+        """Return a deep copy of the stored history snapshot."""
+        return deepcopy(self._snapshot)
 
 
-class Caretaker:
-    """Manages undo and redo stacks for calculator history."""
+class UndoRedoManager:
+    """Handles undo and redo operations using history snapshots."""
 
     def __init__(self):
-        self.undo_stack: List[Memento] = []
-        self.redo_stack: List[Memento] = []
+        """Initialize empty stacks for undo and redo actions."""
+        self._undo_stack: List[HistorySnapshot] = []
+        self._redo_stack: List[HistorySnapshot] = []
 
-    def save(self, state: List[Calculation]) -> None:
-        """Save current state to undo stack and clear redo stack."""
-        self.undo_stack.append(Memento(state))
-        self.redo_stack.clear()
+    # ------------------ Core Operations ------------------
 
-    def undo(self, current_state: List[Calculation]) -> List[Calculation]:
-        """Undo the last action and return previous state."""
-        if not self.undo_stack:
-            return current_state
-        memento = self.undo_stack.pop()
-        self.redo_stack.append(Memento(current_state.copy()))
-        return memento.state
+    def undo(self, current_history: List[Calculation]) -> List[Calculation]:
+        """
+        Revert to the previous history state.
 
-    def redo(self, current_state: List[Calculation]) -> List[Calculation]:
-        """Redo the last undone action and return next state."""
-        if not self.redo_stack:
-            return current_state
-        memento = self.redo_stack.pop()
-        self.undo_stack.append(Memento(current_state.copy()))
-        return memento.state
+        Args:
+            current_history: Current calculation history
 
+        Returns:
+            Previous state of the history
 
-@dataclass
-class CalculatorMemento:
-    """
-    Stores calculator state for undo/redo functionality.
+        Raises:
+            HistoryError: If no previous state exists
+        """
+        if not self._undo_stack:
+            raise HistoryError("No operations to undo")
 
-    Allows the Calculator to save its current history so that it can be restored later.
-    """
-    history: List[Calculation]
-    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
+        # Save current state to redo stack
+        self._redo_stack.append(HistorySnapshot(current_history))
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize the memento into a dictionary."""
-        return {
-            'history': [calc.to_dict() for calc in self.history],
-            'timestamp': self.timestamp.isoformat()
-        }
+        # Restore previous state
+        previous = self._undo_stack.pop()
+        return previous.retrieve()
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CalculatorMemento':
-        """Deserialize a dictionary to recreate a CalculatorMemento instance."""
-        return cls(
-            history=[Calculation.from_dict(calc) for calc in data['history']],
-            timestamp=datetime.datetime.fromisoformat(data['timestamp'])
-        )
+    def redo(self) -> List[Calculation]:
+        """
+        Reapply the last undone operation.
+
+        Returns:
+            Restored history after redo
+
+        Raises:
+            HistoryError: If no redo state exists
+        """
+        if not self._redo_stack:
+            raise HistoryError("No operations to redo")
+
+        next_state = self._redo_stack.pop()
+        self._undo_stack.append(next_state)
+        return next_state.retrieve()
+
+    def record_state(self, current_history: List[Calculation]) -> None:
+        """
+        Record current history state to the undo stack.
+        Clears redo stack whenever a new state is recorded.
+
+        Args:
+            current_history: Current calculation history
+        """
+        snapshot = HistorySnapshot(current_history)
+        self._undo_stack.append(snapshot)
+        self._redo_stack.clear()
+
+    # ------------------ Utility Methods ------------------
+
+    def reset(self):
+        """Clear all undo and redo states."""
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+
+    def has_undo(self) -> bool:
+        """Return True if undo is possible."""
+        return

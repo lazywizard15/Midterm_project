@@ -1,48 +1,27 @@
-########################
-# Exception Hierarchy  #
-########################
+"""
+Custom exception hierarchy for the calculator system.
+"""
 
-class CalculatorError(Exception):
-    """
-    Base exception class for calculator-specific errors.
-
-    All custom exceptions for the calculator application inherit from this class,
-    allowing for unified error handling.
-    """
+class CalcBaseError(Exception):
+    """Generic base exception for calculator-related errors."""
     pass
 
 
-class ValidationError(CalculatorError):
-    """
-    Raised when input validation fails.
-
-    This exception is triggered when user inputs do not meet the required criteria,
-    such as entering non-numeric values or exceeding maximum allowed values.
-    """
+class CalcOpError(CalcBaseError):
+    """Raised when an arithmetic operation fails."""
     pass
 
 
-class OperationError(CalculatorError):
-    """
-    Raised when a calculation operation fails.
-
-    This exception is used to indicate failures during the execution of arithmetic
-    operations, such as division by zero or invalid operations.
-    """
+class CalcValidationError(CalcBaseError):
+    """Raised when input validation fails."""
     pass
 
 
-class ConfigurationError(CalculatorError):
-    """
-    Raised when calculator configuration is invalid.
-
-    Triggered when there are issues with the calculator's configuration settings,
-    such as invalid directory paths or improper configuration values.
-    """
+class CalcHistoryError(CalcBaseError):
+    """Raised for errors in history operations (undo/redo/save/load)."""
     pass
 
-class OperationError(Exception):
-    pass
 
-class ValidationError(Exception):
+class CalcConfigError(CalcBaseError):
+    """Raised when configuration settings fail to load or are invalid."""
     pass
