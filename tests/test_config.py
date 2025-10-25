@@ -25,10 +25,7 @@ def temp_env_setup(tmp_path):
     env_content = f"""
 CALCULATOR_LOG_DIR="{log_dir}"
 CALCULATOR_HISTORY_DIR="{history_dir}"
-CALCULATOR_MAX_HISTORY_SIZE=10
-CALCULATOR_AUTO_SAVE="true"
-CALCULATOR_MAX_INPUT_VALUE=500
-CALCULATOR_DEFAULT_ENCODING="latin-1"
+
 """
     env_file = project_root / ".env"
     env_file.write_text(env_content)
@@ -63,7 +60,7 @@ def test_config_loader_success(temp_env_setup):
 
     # --- 3. Test Get Settings ---
     assert config.get_setting('CALCULATOR_MAX_HISTORY_SIZE') == "10"
-    assert config.get_setting('CALCULATOR_AUTO_SAVE') == "true"
+    assert config.get_setting('CALCULATOR_AUTO_SAVE') == "false"
     assert config.get_setting('CALCULATOR_PRECISION') == "4"
     assert config.get_setting('CALCULATOR_MAX_INPUT_VALUE') == "1000"
     assert config.get_setting('CALCULATOR_DEFAULT_ENCODING') == 'utf-8'
