@@ -26,7 +26,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov  # Ensure pytest-cov is installed
-
+          pip install colorama
+          
       - name: Run tests with pytest and enforce 90% coverage
         run: |
           pytest --cov=app --cov-fail-under=90
